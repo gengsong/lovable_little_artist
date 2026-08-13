@@ -37,6 +37,8 @@ class LittleArtistVerseApp extends StatelessWidget {
 
 enum StudioTab { home, draw, lessons, gallery, animation, parent }
 
+typedef SaveArtworkCallback = void Function(List<DrawingStroke> strokes, Size sourceSize);
+
 class StudioHome extends StatefulWidget {
   const StudioHome({super.key});
 
@@ -46,12 +48,30 @@ class StudioHome extends StatefulWidget {
 
 class _StudioHomeState extends State<StudioHome> {
   StudioTab tab = StudioTab.home;
-  final sketches = const [
-    RecentSketch('开心的太阳', SketchKind.sun),
-    RecentSketch('我的小房子', SketchKind.house),
-    RecentSketch('打瞌睡的小猫', SketchKind.cat),
-    RecentSketch('月亮火箭', SketchKind.rocket),
+  final sketches = <RecentSketch>[
+    RecentSketch.sample('开心的太阳', '8月10日', SketchKind.sun),
+    RecentSketch.sample('我的小房子', '8月9日', SketchKind.house),
+    RecentSketch.sample('打瞌睡的小猫', '8月7日', SketchKind.cat),
+    RecentSketch.sample('月亮火箭', '8月5日', SketchKind.rocket),
+    RecentSketch.sample('大花朵', '8月3日', SketchKind.flower),
+    RecentSketch.sample('彩虹鱼', '8月1日', SketchKind.fish),
   ];
+
+  void _saveArtwork(List<DrawingStroke> strokes, Size sourceSize) {
+    final now = DateTime.now();
+    setState(() {
+      sketches.insert(
+        0,
+        RecentSketch.drawing(
+          '自由创作 ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+          '${now.month}月${now.day}日',
+          strokes,
+          sourceSize,
+        ),
+      );
+      tab = StudioTab.gallery;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,10 +83,16 @@ class _StudioHomeState extends State<StudioHome> {
               sketches: sketches,
               onOpen: (next) => setState(() => tab = next),
             ),
-          StudioTab.draw => DrawPage(onBack: () => setState(() => tab = StudioTab.home)),
+          StudioTab.draw => DrawPage(
+              onBack: () => setState(() => tab = StudioTab.home),
+              onSaveArtwork: _saveArtwork,
+            ),
           StudioTab.lessons => LessonsPage(onBack: () => setState(() => tab = StudioTab.home)),
           StudioTab.gallery => GalleryPage(sketches: sketches, onBack: () => setState(() => tab = StudioTab.home)),
-          StudioTab.animation => AnimationPage(onBack: () => setState(() => tab = StudioTab.home)),
+          StudioTab.animation => AnimationPage(
+              sketches: sketches,
+              onBack: () => setState(() => tab = StudioTab.home),
+            ),
           StudioTab.parent => ParentPage(onBack: () => setState(() => tab = StudioTab.home)),
         };
 
@@ -387,40 +413,121 @@ class ActionTile extends StatelessWidget {
   }
 }
 
-enum SketchKind { sun, house, cat, rocket }
+enum SketchKind { sun, house, cat, rocket, flower, fish }
 
 class RecentSketch {
-  const RecentSketch(this.title, this.kind);
+  const RecentSketch.sample(this.title, this.date, this.kind)
+      : strokes = null,
+        sourceSize = null;
+
+  const RecentSketch.drawing(this.title, this.date, this.strokes, this.sourceSize) : kind = null;
+
   final String title;
-  final SketchKind kind;
+  final String date;
+  final SketchKind? kind;
+  final List<DrawingStroke>? strokes;
+  final Size? sourceSize;
 }
 
 class RecentCard extends StatelessWidget {
-  const RecentCard({super.key, required this.sketch, this.compact = false});
+  const RecentCard({super.key, required this.sketch, this.compact = false, this.onTap});
 
   final RecentSketch sketch;
   final bool compact;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: compact ? 160 : 258,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(34),
+      child: InkWell(
         borderRadius: BorderRadius.circular(34),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 18, offset: const Offset(0, 10))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: CustomPaint(painter: SketchPainter(sketch.kind), child: const SizedBox.expand())),
-          const SizedBox(height: 10),
-          Text(sketch.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: compact ? 14 : 23, fontWeight: FontWeight.w900)),
-        ],
+        onTap: onTap,
+        child: Container(
+          width: compact ? 160 : 258,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(34),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 18, offset: const Offset(0, 10))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: CustomPaint(
+                  painter: sketch.strokes == null
+                      ? SketchPainter(sketch.kind ?? SketchKind.sun)
+                      : ArtworkPreviewPainter(
+                          strokes: sketch.strokes!,
+                          sourceSize: sketch.sourceSize ?? const Size(800, 600),
+                        ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(sketch.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: compact ? 14 : 18, fontWeight: FontWeight.w900)),
+                  ),
+                  if (!compact)
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: const BoxDecoration(color: Color(0xFFFFE3DC), shape: BoxShape.circle),
+                      child: const Icon(Icons.play_arrow_rounded, color: _orange),
+                    ),
+                ],
+              ),
+              if (!compact) Text(sketch.date, style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class ArtworkPreview extends StatelessWidget {
+  const ArtworkPreview({super.key, required this.sketch});
+
+  final RecentSketch sketch;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: sketch.strokes == null
+          ? SketchPainter(sketch.kind ?? SketchKind.sun)
+          : ArtworkPreviewPainter(
+              strokes: sketch.strokes!,
+              sourceSize: sketch.sourceSize ?? const Size(800, 600),
+            ),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class ArtworkPreviewPainter extends CustomPainter {
+  ArtworkPreviewPainter({required this.strokes, required this.sourceSize});
+
+  final List<DrawingStroke> strokes;
+  final Size sourceSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = math.min(size.width / sourceSize.width, size.height / sourceSize.height);
+    final dx = (size.width - sourceSize.width * scale) / 2;
+    final dy = (size.height - sourceSize.height * scale) / 2;
+    canvas.save();
+    canvas.translate(dx, dy);
+    canvas.scale(scale);
+    NativeCanvasPainter(strokes: strokes).paint(canvas, sourceSize);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant ArtworkPreviewPainter oldDelegate) => true;
 }
 
 class SketchPainter extends CustomPainter {
@@ -480,6 +587,23 @@ class SketchPainter extends CustomPainter {
         canvas.drawCircle(c + const Offset(0, -22), 13, Paint()..color = Colors.white);
         canvas.drawPath(Path()..moveTo(c.dx - 18, c.dy + 42)..lineTo(c.dx - 52, c.dy + 72)..lineTo(c.dx - 8, c.dy + 60)..close(), Paint()..color = const Color(0xFF8D8AF9));
         canvas.drawPath(Path()..moveTo(c.dx + 18, c.dy + 42)..lineTo(c.dx + 52, c.dy + 72)..lineTo(c.dx + 8, c.dy + 60)..close(), Paint()..color = const Color(0xFF8D8AF9));
+      case SketchKind.flower:
+        final petal = Paint()..shader = const LinearGradient(colors: [Color(0xFFFFA0BF), Color(0xFFFFE0A3)]).createShader(Offset.zero & size);
+        for (var i = 0; i < 6; i++) {
+          final a = i * math.pi / 3;
+          canvas.drawCircle(c + Offset(math.cos(a), math.sin(a)) * size.shortestSide * .18, size.shortestSide * .13, petal);
+        }
+        canvas.drawCircle(c, size.shortestSide * .12, Paint()..color = const Color(0xFFE77BD6));
+        canvas.drawLine(c + Offset(0, size.shortestSide * .12), c + Offset(0, size.shortestSide * .44), Paint()..color = const Color(0xFF59A463)..strokeWidth = 10..strokeCap = StrokeCap.round);
+      case SketchKind.fish:
+        canvas.drawOval(Rect.fromCenter(center: c, width: size.width * .52, height: size.height * .32), Paint()..color = const Color(0xFF77DCC4));
+        final tail = Path()
+          ..moveTo(c.dx + size.width * .26, c.dy)
+          ..lineTo(c.dx + size.width * .46, c.dy - size.height * .18)
+          ..lineTo(c.dx + size.width * .46, c.dy + size.height * .18)
+          ..close();
+        canvas.drawPath(tail, Paint()..color = const Color(0xFF74C9F5));
+        canvas.drawCircle(c + Offset(-size.width * .18, -size.height * .04), 7, Paint()..color = _ink);
     }
   }
 
@@ -488,8 +612,9 @@ class SketchPainter extends CustomPainter {
 }
 
 class DrawPage extends StatefulWidget {
-  const DrawPage({super.key, required this.onBack});
+  const DrawPage({super.key, required this.onBack, required this.onSaveArtwork});
   final VoidCallback onBack;
+  final SaveArtworkCallback onSaveArtwork;
 
   @override
   State<DrawPage> createState() => _DrawPageState();
@@ -562,15 +687,25 @@ class _DrawPageState extends State<DrawPage> {
   }
 
   Future<void> _savePreview() async {
+    if (_strokes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('先画一点东西再保存吧'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final boundary = _canvasKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return;
     final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (!mounted) return;
     final sizeKb = ((data?.lengthInBytes ?? 0) / 1024).round();
+    widget.onSaveArtwork(_strokes.map((stroke) => stroke.copy()).toList(), boundary.size);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(sizeKb > 0 ? '已生成作品预览 PNG，约 $sizeKb KB' : '已保存作品预览'),
+        content: Text(sizeKb > 0 ? '已保存到作品集，PNG 预览约 $sizeKb KB' : '已保存到作品集'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -578,7 +713,20 @@ class _DrawPageState extends State<DrawPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [_orange, const Color(0xFFFF9D00), const Color(0xFF20B26B), const Color(0xFF45A7E8), const Color(0xFF8C63E8), const Color(0xFF3A1D10)];
+    final colors = [
+      _orange,
+      const Color(0xFFFF9D00),
+      const Color(0xFFFFCA5C),
+      const Color(0xFF6BDBA4),
+      const Color(0xFF30C99A),
+      const Color(0xFF45B6E8),
+      const Color(0xFF5B6DEE),
+      const Color(0xFFB36DF2),
+      const Color(0xFFE95DA8),
+      const Color(0xFF9A765E),
+      const Color(0xFF101827),
+      Colors.white,
+    ];
     return AppPage(
       title: '自由画画',
       onBack: widget.onBack,
@@ -631,12 +779,12 @@ class _DrawPageState extends State<DrawPage> {
           return Flex(
             direction: isWide ? Axis.horizontal : Axis.vertical,
             children: [
-              Expanded(child: canvas),
-              SizedBox(width: isWide ? 16 : 0, height: isWide ? 0 : 14),
               SizedBox(
-                width: isWide ? 178 : double.infinity,
+                width: isWide ? 112 : double.infinity,
                 child: tools,
               ),
+              SizedBox(width: isWide ? 16 : 0, height: isWide ? 0 : 14),
+              Expanded(child: canvas),
             ],
           );
         },
@@ -666,6 +814,15 @@ class DrawingStroke {
   final Color color;
   final double baseWidth;
   final List<DrawingPoint> points;
+
+  DrawingStroke copy() {
+    return DrawingStroke(
+      tool: tool,
+      color: color,
+      baseWidth: baseWidth,
+      points: List<DrawingPoint>.from(points),
+    );
+  }
 }
 
 class DrawingToolPanel extends StatelessWidget {
@@ -870,50 +1027,233 @@ class NativeCanvasPainter extends CustomPainter {
   bool shouldRepaint(covariant NativeCanvasPainter oldDelegate) => true;
 }
 
-class LessonsPage extends StatelessWidget {
+class LessonsPage extends StatefulWidget {
   const LessonsPage({super.key, required this.onBack});
   final VoidCallback onBack;
 
   @override
+  State<LessonsPage> createState() => _LessonsPageState();
+}
+
+class _LessonsPageState extends State<LessonsPage> {
+  LessonTopic? selectedTopic;
+  int step = 1;
+
+  @override
   Widget build(BuildContext context) {
     final lessons = [
-      ('可爱动物', 'Cute Animals', _mint, Icons.pets_rounded),
-      ('恐龙世界', 'Dinosaurs', _peach, Icons.park_rounded),
-      ('交通工具', 'Vehicles', _butter, Icons.directions_car_rounded),
-      ('节日快乐', 'Festivals', _rose, Icons.celebration_rounded),
+      LessonTopic('小动物', '12 节课', _peach, Icons.pets_rounded, 1),
+      LessonTopic('恐龙', '8 节课', _mint, Icons.park_rounded, 2),
+      LessonTopic('交通工具', '10 节课', _butter, Icons.directions_car_rounded, 2),
+      LessonTopic('节日', '6 节课', _rose, Icons.celebration_rounded, 3),
     ];
-    return AppPage(
-      title: '跟着学画',
-      onBack: onBack,
-      child: ListView.separated(
-        itemCount: lessons.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 14),
-        itemBuilder: (context, index) {
-          final lesson = lessons[index];
-          return Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26)),
-            child: Row(
+
+    if (selectedTopic != null) {
+      final topic = selectedTopic!;
+      return AppPage(
+        title: topic.title,
+        onBack: () => setState(() {
+          selectedTopic = null;
+          step = 1;
+        }),
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(34)),
+                child: CustomPaint(painter: LessonStepPainter(topic: topic, step: step), child: const SizedBox.expand()),
+              ),
+            ),
+            const SizedBox(height: 14),
+            LinearProgressIndicator(
+              value: step / 6,
+              minHeight: 12,
+              borderRadius: BorderRadius.circular(99),
+              color: _orange,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
               children: [
-                Container(width: 110, height: 82, decoration: BoxDecoration(color: lesson.$3, borderRadius: BorderRadius.circular(20)), child: Icon(lesson.$4, size: 42, color: _ink)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(lesson.$1, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                      Text(lesson.$2, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
+                FilledButton.tonalIcon(
+                  onPressed: step > 1 ? () => setState(() => step--) : null,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('上一步'),
                 ),
-                const Icon(Icons.more_horiz_rounded, color: _brown),
+                FilledButton.tonalIcon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.volume_up_rounded),
+                  label: const Text('语音提示'),
+                ),
+                FilledButton.icon(
+                  onPressed: step < 6 ? () => setState(() => step++) : widget.onBack,
+                  icon: Icon(step < 6 ? Icons.arrow_forward_rounded : Icons.palette_rounded),
+                  label: Text(step < 6 ? '下一步' : '去上色'),
+                ),
               ],
             ),
-          );
-        },
+          ],
+        ),
+      );
+    }
+
+    return AppPage(
+      title: '跟着学画',
+      onBack: widget.onBack,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('选一个主题，一步一步画。', style: TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 18),
+          Expanded(
+            child: GridView.builder(
+              itemCount: lessons.length,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 520,
+                childAspectRatio: 1.85,
+                crossAxisSpacing: 18,
+                mainAxisSpacing: 18,
+              ),
+              itemBuilder: (context, index) {
+                final lesson = lessons[index];
+                return LessonTopicCard(
+                  topic: lesson,
+                  onTap: () => setState(() {
+                    selectedTopic = lesson;
+                    step = 1;
+                  }),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class LessonTopic {
+  const LessonTopic(this.title, this.count, this.color, this.icon, this.stars);
+
+  final String title;
+  final String count;
+  final Color color;
+  final IconData icon;
+  final int stars;
+}
+
+class LessonTopicCard extends StatelessWidget {
+  const LessonTopicCard({super.key, required this.topic, required this.onTap});
+
+  final LessonTopic topic;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(34),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(34),
+        onTap: onTap,
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: topic.color,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+                ),
+                child: Center(child: Icon(topic.icon, size: 58, color: _ink)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(topic.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                        Text(topic.count, style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                  for (var i = 0; i < 3; i++)
+                    Icon(Icons.star_rounded, color: i < topic.stars ? const Color(0xFFFFB22E) : const Color(0xFFE8DAC6), size: 19),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class LessonStepPainter extends CustomPainter {
+  LessonStepPainter({required this.topic, required this.step});
+
+  final LessonTopic topic;
+  final int step;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = _orange
+      ..strokeWidth = size.shortestSide * .035
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final faint = Paint()
+      ..color = _brown.withValues(alpha: .16)
+      ..strokeWidth = size.shortestSide * .028
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final text = TextPainter(
+      text: TextSpan(text: '第 $step 步 / 共 6 步', style: const TextStyle(color: _ink, fontSize: 24, fontWeight: FontWeight.w900)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    text.paint(canvas, const Offset(28, 24));
+
+    void drawWhen(int minStep, VoidCallback draw) {
+      final previous = paint.color;
+      paint.color = step >= minStep ? _orange : _brown.withValues(alpha: .16);
+      draw();
+      paint.color = previous;
+    }
+
+    drawWhen(1, () => canvas.drawCircle(center, size.shortestSide * .16, paint));
+    drawWhen(2, () {
+      canvas.drawCircle(center + Offset(-size.width * .05, -size.height * .02), 6, Paint()..color = _ink);
+      canvas.drawCircle(center + Offset(size.width * .05, -size.height * .02), 6, Paint()..color = _ink);
+    });
+    drawWhen(3, () => canvas.drawArc(Rect.fromCenter(center: center + Offset(0, size.height * .04), width: 70, height: 40), 0, math.pi, false, paint));
+    drawWhen(4, () {
+      canvas.drawLine(center + Offset(-size.width * .16, -size.height * .04), center + Offset(-size.width * .24, -size.height * .16), paint);
+      canvas.drawLine(center + Offset(size.width * .16, -size.height * .04), center + Offset(size.width * .24, -size.height * .16), paint);
+    });
+    drawWhen(5, () {
+      canvas.drawLine(center + Offset(-size.width * .08, size.height * .16), center + Offset(-size.width * .12, size.height * .30), paint);
+      canvas.drawLine(center + Offset(size.width * .08, size.height * .16), center + Offset(size.width * .12, size.height * .30), paint);
+    });
+    if (step < 6) {
+      canvas.drawCircle(center + Offset(size.width * .26, 0), size.shortestSide * .08, faint);
+    } else {
+      canvas.drawCircle(center + Offset(size.width * .26, 0), size.shortestSide * .08, Paint()..color = topic.color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant LessonStepPainter oldDelegate) => oldDelegate.step != step || oldDelegate.topic != topic;
 }
 
 class GalleryPage extends StatelessWidget {
@@ -926,41 +1266,71 @@ class GalleryPage extends StatelessWidget {
     return AppPage(
       title: '我的作品集',
       onBack: onBack,
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 230, childAspectRatio: .82, mainAxisSpacing: 16, crossAxisSpacing: 16),
-        itemCount: sketches.length,
-        itemBuilder: (context, index) => RecentCard(sketch: sketches[index]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${sketches.length} 幅作品 · 只有你和家长能看到', style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 18),
+          Expanded(
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 250, childAspectRatio: .82, mainAxisSpacing: 18, crossAxisSpacing: 18),
+              itemCount: sketches.length,
+              itemBuilder: (context, index) {
+                final sketch = sketches[index];
+                return RecentCard(
+                  sketch: sketch,
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    backgroundColor: _bg,
+                    builder: (context) => ArtworkDetailSheet(sketch: sketch),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class AnimationPage extends StatelessWidget {
-  const AnimationPage({super.key, required this.onBack});
-  final VoidCallback onBack;
+class ArtworkDetailSheet extends StatelessWidget {
+  const ArtworkDetailSheet({super.key, required this.sketch});
+
+  final RecentSketch sketch;
 
   @override
   Widget build(BuildContext context) {
-    return AppPage(
-      title: '动画故事',
-      onBack: onBack,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
+          Row(
+            children: [
+              Expanded(child: Text(sketch.title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900))),
+              Text(sketch.date, style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 16),
           Expanded(
             child: Container(
               width: double.infinity,
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
-              child: const Center(child: Text('✨', style: TextStyle(fontSize: 112))),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(34)),
+              child: ArtworkPreview(sketch: sketch),
             ),
           ),
           const SizedBox(height: 16),
           Wrap(
-            spacing: 10,
-            children: const [
-              Chip(label: Text('跳一跳')),
-              Chip(label: Text('眨眼')),
-              Chip(label: Text('飞起来')),
-              Chip(label: Text('笔画回放')),
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
+            children: [
+              FilledButton.tonalIcon(onPressed: () {}, icon: const Icon(Icons.play_arrow_rounded), label: const Text('播放回放')),
+              FilledButton.tonalIcon(onPressed: () {}, icon: const Icon(Icons.auto_awesome_rounded), label: const Text('生成动画')),
+              FilledButton.tonalIcon(onPressed: () {}, icon: const Icon(Icons.ios_share_rounded), label: const Text('分享给家长')),
+              FilledButton.tonalIcon(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded), label: const Text('关闭')),
             ],
           ),
         ],
@@ -969,33 +1339,288 @@ class AnimationPage extends StatelessWidget {
   }
 }
 
-class ParentPage extends StatelessWidget {
+class AnimationPage extends StatefulWidget {
+  const AnimationPage({super.key, required this.sketches, required this.onBack});
+  final List<RecentSketch> sketches;
+  final VoidCallback onBack;
+
+  @override
+  State<AnimationPage> createState() => _AnimationPageState();
+}
+
+class _AnimationPageState extends State<AnimationPage> with SingleTickerProviderStateMixin {
+  late final AnimationController controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
+  int selectedSketch = 0;
+  String selectedEffect = '弹跳';
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sketches = widget.sketches;
+    final sketch = sketches[selectedSketch.clamp(0, sketches.length - 1)];
+    final effects = [
+      (Icons.keyboard_double_arrow_up_rounded, '弹跳'),
+      (Icons.auto_awesome_rounded, '闪烁'),
+      (Icons.flight_takeoff_rounded, '飞翔'),
+      (Icons.draw_rounded, '笔迹重播'),
+    ];
+    return AppPage(
+      title: '动画故事',
+      onBack: widget.onBack,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 820;
+          final preview = Container(
+            padding: const EdgeInsets.all(34),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(38), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 24, offset: const Offset(0, 12))]),
+            child: AnimatedBuilder(
+              animation: controller,
+              builder: (context, child) {
+                final t = controller.value;
+                final offset = selectedEffect == '弹跳'
+                    ? Offset(0, -24 * math.sin(t * math.pi))
+                    : selectedEffect == '飞翔'
+                        ? Offset(30 * math.sin(t * math.pi * 2), -10 * math.sin(t * math.pi))
+                        : Offset.zero;
+                final opacity = selectedEffect == '闪烁' ? .55 + .45 * t : 1.0;
+                final scale = selectedEffect == '笔迹重播' ? .92 + .08 * t : 1.0;
+                return Opacity(
+                  opacity: opacity,
+                  child: Transform.translate(
+                    offset: offset,
+                    child: Transform.scale(scale: scale, child: child),
+                  ),
+                );
+              },
+              child: ArtworkPreview(sketch: sketch),
+            ),
+          );
+          final controls = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('选一幅画，让它动起来。', style: TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 22),
+              const Text('1. 选一幅画', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 96,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: sketches.length,
+                  separatorBuilder: (context, index) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(26),
+                      onTap: () => setState(() => selectedSketch = index),
+                      child: Container(
+                        width: 96,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(color: selectedSketch == index ? _orange : Colors.white, width: 3),
+                        ),
+                        child: ArtworkPreview(sketch: sketches[index]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text('2. 选一个效果', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 4.2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                children: [
+                  for (final effect in effects)
+                    ChoiceChip(
+                      avatar: Icon(effect.$1, color: selectedEffect == effect.$2 ? _ink : _orange),
+                      label: Align(alignment: Alignment.centerLeft, child: Text(effect.$2, style: const TextStyle(fontWeight: FontWeight.w900))),
+                      selected: selectedEffect == effect.$2,
+                      selectedColor: const Color(0xFF77DDB4),
+                      backgroundColor: Colors.white,
+                      onSelected: (_) => setState(() => selectedEffect = effect.$2),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: _orange, padding: const EdgeInsets.symmetric(vertical: 18)),
+                  onPressed: () {},
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('保存动画'),
+                ),
+              ),
+            ],
+          );
+          return wide
+              ? Row(children: [Expanded(flex: 4, child: preview), const SizedBox(width: 20), Expanded(flex: 6, child: SingleChildScrollView(child: controls))])
+              : Column(children: [Expanded(child: preview), const SizedBox(height: 18), Expanded(child: SingleChildScrollView(child: controls))]);
+        },
+      ),
+    );
+  }
+}
+class ParentPage extends StatefulWidget {
   const ParentPage({super.key, required this.onBack});
   final VoidCallback onBack;
 
   @override
+  State<ParentPage> createState() => _ParentPageState();
+}
+
+class _ParentPageState extends State<ParentPage> {
+  final answer = TextEditingController();
+  bool verified = false;
+  double minutes = 25;
+  String ageMode = '5-8 岁';
+
+  @override
+  void dispose() {
+    answer.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (verified) {
+      return AppPage(
+        title: '家长中心',
+        onBack: widget.onBack,
+        child: ListView(
+          children: [
+            ParentSettingCard(
+              icon: Icons.timer_rounded,
+              title: '每日使用时长',
+              subtitle: '${minutes.round()} 分钟',
+              trailing: SizedBox(
+                width: 260,
+                child: Slider(
+                  value: minutes,
+                  min: 10,
+                  max: 60,
+                  divisions: 5,
+                  activeColor: _orange,
+                  onChanged: (value) => setState(() => minutes = value),
+                ),
+              ),
+            ),
+            ParentSettingCard(
+              icon: Icons.child_care_rounded,
+              title: '年龄模式',
+              subtitle: ageMode,
+              trailing: DropdownButton<String>(
+                value: ageMode,
+                items: const ['3-4 岁', '5-8 岁', '9-10 岁'].map((age) => DropdownMenuItem(value: age, child: Text(age))).toList(),
+                onChanged: (value) => setState(() => ageMode = value ?? ageMode),
+              ),
+            ),
+            const ParentSettingCard(icon: Icons.visibility_off_rounded, title: '护眼提醒', subtitle: '每 20 分钟提醒休息'),
+            const ParentSettingCard(icon: Icons.lock_rounded, title: '隐私保护', subtitle: '作品仅本地保存，默认不公开'),
+            const ParentSettingCard(icon: Icons.inventory_2_rounded, title: '素材包管理', subtitle: '动物、恐龙、交通、节日'),
+          ],
+        ),
+      );
+    }
+
     return AppPage(
-      title: '家长中心',
-      onBack: onBack,
+      title: '返回儿童模式',
+      onBack: widget.onBack,
       child: Center(
         child: Container(
-          width: 360,
+          width: 390,
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(34)),
-          child: const Column(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_rounded, size: 50, color: _brown),
-              SizedBox(height: 18),
-              Text('Parents Only', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-              SizedBox(height: 6),
-              Text('What is 12 + 7?', style: TextStyle(color: _muted)),
-              SizedBox(height: 18),
-              FilledButton(onPressed: null, child: Text('19')),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton.filledTonal(onPressed: widget.onBack, icon: const Icon(Icons.close_rounded)),
+              ),
+              const Icon(Icons.verified_user_outlined, size: 50, color: _brown),
+              const SizedBox(height: 10),
+              const Text('家长验证', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 6),
+              const Text('回答问题即可进入家长中心。', style: TextStyle(color: _muted)),
+              const SizedBox(height: 18),
+              const Align(alignment: Alignment.centerLeft, child: Text('9 × 10 等于多少？', style: TextStyle(fontWeight: FontWeight.w900))),
+              const SizedBox(height: 8),
+              TextField(
+                controller: answer,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: '答案',
+                  filled: true,
+                  fillColor: _bg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: const BorderSide(color: _orange)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: const BorderSide(color: _orange, width: 2)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3E5A78), padding: const EdgeInsets.symmetric(vertical: 16)),
+                  onPressed: () {
+                    if (answer.text.trim() == '90') {
+                      setState(() => verified = true);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('答案不对，请再试一次')));
+                    }
+                  },
+                  child: const Text('继续'),
+                ),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class ParentSettingCard extends StatelessWidget {
+  const ParentSettingCard({super.key, required this.icon, required this.title, required this.subtitle, this.trailing});
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28)),
+      child: Row(
+        children: [
+          CircleAvatar(backgroundColor: const Color(0xFFFFE3DC), child: Icon(icon, color: _orange)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                Text(subtitle, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
       ),
     );
   }
