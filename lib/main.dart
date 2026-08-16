@@ -3,8 +3,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
-void main() => runApp(const LittleArtistVerseApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  runApp(const LittleArtistVerseApp());
+}
 
 const _bg = Color(0xFFFFF9EC);
 const _ink = Color(0xFF3A1D10);
@@ -46,26 +54,74 @@ class StudioHome extends StatefulWidget {
 
 class _StudioHomeState extends State<StudioHome> {
   StudioTab tab = StudioTab.home;
+  int _savedArtworkCount = 0;
   final sketches = const [
     RecentSketch('开心的太阳', SketchKind.sun),
     RecentSketch('我的小房子', SketchKind.house),
     RecentSketch('打瞌睡的小猫', SketchKind.cat),
     RecentSketch('月亮火箭', SketchKind.rocket),
   ];
+  final artworks = <GalleryArtwork>[
+    const GalleryArtwork(id: 'sun', title: '开心的太阳', createdLabel: '今天', color: _butter, kind: SketchKind.sun),
+    const GalleryArtwork(id: 'house', title: '我的小房子', createdLabel: '昨天', color: _mint, kind: SketchKind.house),
+    const GalleryArtwork(id: 'cat', title: '打瞌睡的小猫', createdLabel: '3 天前', color: _peach, kind: SketchKind.cat),
+    const GalleryArtwork(id: 'rocket', title: '月亮火箭', createdLabel: '上周', color: _rose, kind: SketchKind.rocket),
+  ];
+
+  void _addArtwork(Uint8List pngBytes) {
+    setState(() {
+      _savedArtworkCount++;
+      artworks.insert(
+        0,
+        GalleryArtwork(
+          id: 'drawing-${DateTime.now().microsecondsSinceEpoch}',
+          title: '我的画作 $_savedArtworkCount',
+          createdLabel: '刚刚',
+          color: _mint,
+          pngBytes: pngBytes,
+          isUserCreated: true,
+        ),
+      );
+    });
+  }
+
+  void _toggleArtworkFavorite(String id) {
+    final index = artworks.indexWhere((artwork) => artwork.id == id);
+    if (index < 0) return;
+    setState(() => artworks[index] = artworks[index].copyWith(isFavorite: !artworks[index].isFavorite));
+  }
+
+  void _renameArtwork(String id, String title) {
+    final index = artworks.indexWhere((artwork) => artwork.id == id);
+    if (index < 0) return;
+    setState(() => artworks[index] = artworks[index].copyWith(title: title));
+  }
+
+  void _deleteArtwork(String id) => setState(() => artworks.removeWhere((artwork) => artwork.id == id));
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTablet = constraints.maxWidth >= 820;
+        final isTablet = constraints.biggest.shortestSide >= 600 && constraints.maxHeight >= 700;
         final content = switch (tab) {
           StudioTab.home => Dashboard(
               sketches: sketches,
               onOpen: (next) => setState(() => tab = next),
             ),
-          StudioTab.draw => DrawPage(onBack: () => setState(() => tab = StudioTab.home)),
+          StudioTab.draw => DrawPage(
+              onBack: () => setState(() => tab = StudioTab.home),
+              onSaved: _addArtwork,
+            ),
           StudioTab.lessons => LessonsPage(onBack: () => setState(() => tab = StudioTab.home)),
-          StudioTab.gallery => GalleryPage(sketches: sketches, onBack: () => setState(() => tab = StudioTab.home)),
+          StudioTab.gallery => GalleryPage(
+              artworks: artworks,
+              onBack: () => setState(() => tab = StudioTab.home),
+              onCreateNew: () => setState(() => tab = StudioTab.draw),
+              onToggleFavorite: _toggleArtworkFavorite,
+              onRename: _renameArtwork,
+              onDelete: _deleteArtwork,
+            ),
           StudioTab.animation => AnimationPage(onBack: () => setState(() => tab = StudioTab.home)),
           StudioTab.parent => ParentPage(onBack: () => setState(() => tab = StudioTab.home)),
         };
@@ -395,6 +451,41 @@ class RecentSketch {
   final SketchKind kind;
 }
 
+class GalleryArtwork {
+  const GalleryArtwork({
+    required this.id,
+    required this.title,
+    required this.createdLabel,
+    required this.color,
+    this.kind,
+    this.pngBytes,
+    this.isFavorite = false,
+    this.isUserCreated = false,
+  });
+
+  final String id;
+  final String title;
+  final String createdLabel;
+  final Color color;
+  final SketchKind? kind;
+  final Uint8List? pngBytes;
+  final bool isFavorite;
+  final bool isUserCreated;
+
+  GalleryArtwork copyWith({String? title, bool? isFavorite}) {
+    return GalleryArtwork(
+      id: id,
+      title: title ?? this.title,
+      createdLabel: createdLabel,
+      color: color,
+      kind: kind,
+      pngBytes: pngBytes,
+      isFavorite: isFavorite ?? this.isFavorite,
+      isUserCreated: isUserCreated,
+    );
+  }
+}
+
 class RecentCard extends StatelessWidget {
   const RecentCard({super.key, required this.sketch, this.compact = false});
 
@@ -488,8 +579,9 @@ class SketchPainter extends CustomPainter {
 }
 
 class DrawPage extends StatefulWidget {
-  const DrawPage({super.key, required this.onBack});
+  const DrawPage({super.key, required this.onBack, required this.onSaved});
   final VoidCallback onBack;
+  final ValueChanged<Uint8List> onSaved;
 
   @override
   State<DrawPage> createState() => _DrawPageState();
@@ -567,10 +659,16 @@ class _DrawPageState extends State<DrawPage> {
     final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (!mounted) return;
-    final sizeKb = ((data?.lengthInBytes ?? 0) / 1024).round();
+    if (data == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保存失败，请再试一次')));
+      return;
+    }
+    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    widget.onSaved(bytes);
+    final sizeKb = (data.lengthInBytes / 1024).round();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(sizeKb > 0 ? '已生成作品预览 PNG，约 $sizeKb KB' : '已保存作品预览'),
+        content: Text(sizeKb > 0 ? '已保存到作品集，约 $sizeKb KB' : '已保存到作品集'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -609,6 +707,7 @@ class _DrawPageState extends State<DrawPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: Listener(
+                key: const ValueKey('free-drawing-canvas'),
                 behavior: HitTestBehavior.opaque,
                 onPointerDown: _startStroke,
                 onPointerMove: _extendStroke,
@@ -805,14 +904,16 @@ class ToolChip extends StatelessWidget {
 }
 
 class NativeCanvasPainter extends CustomPainter {
-  NativeCanvasPainter({required this.strokes});
+  NativeCanvasPainter({required this.strokes, this.guide});
 
   final List<DrawingStroke> strokes;
+  final CustomPainter? guide;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
     _drawPaperTexture(canvas, size);
+    guide?.paint(canvas, size);
 
     for (final stroke in strokes) {
       if (stroke.points.isEmpty) continue;
@@ -870,45 +971,321 @@ class NativeCanvasPainter extends CustomPainter {
   bool shouldRepaint(covariant NativeCanvasPainter oldDelegate) => true;
 }
 
-class LessonsPage extends StatelessWidget {
+enum LessonArt { cat, dinosaur, car, lantern }
+
+class LessonStep {
+  const LessonStep(this.title, this.description, this.tip);
+
+  final String title;
+  final String description;
+  final String tip;
+}
+
+class DrawingLesson {
+  const DrawingLesson({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.category,
+    required this.duration,
+    required this.color,
+    required this.icon,
+    required this.art,
+    required this.steps,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final String category;
+  final String duration;
+  final Color color;
+  final IconData icon;
+  final LessonArt art;
+  final List<LessonStep> steps;
+}
+
+const _drawingLessons = [
+  DrawingLesson(
+    id: 'round-cat',
+    title: '圆脸小猫',
+    subtitle: '用圆形和三角形画一只萌萌的小猫',
+    category: '可爱动物',
+    duration: '约 6 分钟',
+    color: _mint,
+    icon: Icons.pets_rounded,
+    art: LessonArt.cat,
+    steps: [
+      LessonStep('画一个大圆', '先画一个大大的圆，做小猫的脑袋。', '慢慢转动手腕，圆不需要特别完美。'),
+      LessonStep('添上三角耳朵', '在圆形上方画两个小三角形。', '两只耳朵一高一低也很可爱。'),
+      LessonStep('画弯弯的眼睛', '加上眼睛和一个小鼻子。', '像画两个月牙一样画眼睛。'),
+      LessonStep('加上笑脸和胡须', '最后画嘴巴和三根长胡须。', '选喜欢的颜色，再加一点腮红吧。'),
+    ],
+  ),
+  DrawingLesson(
+    id: 'little-dinosaur',
+    title: '快乐小恐龙',
+    subtitle: '从椭圆开始，画一只温柔的小恐龙',
+    category: '恐龙世界',
+    duration: '约 8 分钟',
+    color: _peach,
+    icon: Icons.park_rounded,
+    art: LessonArt.dinosaur,
+    steps: [
+      LessonStep('画椭圆身体', '横着画一个胖胖的椭圆。', '椭圆越饱满，小恐龙越可爱。'),
+      LessonStep('加上脑袋和脖子', '从身体向上画长脖子和小脑袋。', '用一条柔软的弧线连接身体。'),
+      LessonStep('添四条腿和尾巴', '画短短的腿，再加一条长尾巴。', '脚掌可以画成圆圆的小方块。'),
+      LessonStep('画背刺和表情', '沿背部加三角背刺，再画笑脸。', '背刺可以大小不一样。'),
+    ],
+  ),
+  DrawingLesson(
+    id: 'tiny-car',
+    title: '出发吧小汽车',
+    subtitle: '组合方形和圆形，画自己的小汽车',
+    category: '交通工具',
+    duration: '约 7 分钟',
+    color: _butter,
+    icon: Icons.directions_car_rounded,
+    art: LessonArt.car,
+    steps: [
+      LessonStep('画长方形车身', '先画一个圆角长方形。', '车头可以稍微高一点。'),
+      LessonStep('加上车顶', '在车身上画一个梯形车顶。', '给车顶留出两扇窗的位置。'),
+      LessonStep('画两个轮子', '在车身下方画两个圆形轮子。', '让两个轮子差不多大。'),
+      LessonStep('装饰车窗和车灯', '画上车窗、车灯和喜欢的花纹。', '给小汽车取一个名字吧。'),
+    ],
+  ),
+  DrawingLesson(
+    id: 'red-lantern',
+    title: '圆圆红灯笼',
+    subtitle: '用弧线画一个喜气洋洋的小灯笼',
+    category: '节日快乐',
+    duration: '约 6 分钟',
+    color: _rose,
+    icon: Icons.celebration_rounded,
+    art: LessonArt.lantern,
+    steps: [
+      LessonStep('画灯笼肚子', '画一个竖着的胖椭圆。', '上下稍窄，中间圆鼓鼓。'),
+      LessonStep('加上顶盖和底座', '在椭圆上下各画一个小长方形。', '让顶盖和底座对齐。'),
+      LessonStep('画提绳和流苏', '上面添提绳，下面添长流苏。', '流苏可以画得轻轻摆动。'),
+      LessonStep('加花纹和光芒', '在灯笼上画弧线，再添几颗小星星。', '最后涂上最喜庆的颜色。'),
+    ],
+  ),
+];
+
+class LessonsPage extends StatefulWidget {
   const LessonsPage({super.key, required this.onBack});
   final VoidCallback onBack;
 
   @override
+  State<LessonsPage> createState() => _LessonsPageState();
+}
+
+class _LessonsPageState extends State<LessonsPage> {
+  String _category = '全部';
+  DrawingLesson? _activeLesson;
+  final Map<String, int> _progress = {};
+
+  int _progressFor(DrawingLesson lesson) => math.min(_progress[lesson.id] ?? 0, lesson.steps.length);
+
+  void _openLesson(DrawingLesson lesson) => setState(() => _activeLesson = lesson);
+
+  void _updateProgress(DrawingLesson lesson, int completedSteps) {
+    setState(() => _progress[lesson.id] = completedSteps.clamp(0, lesson.steps.length));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final lessons = [
-      ('可爱动物', 'Cute Animals', _mint, Icons.pets_rounded),
-      ('恐龙世界', 'Dinosaurs', _peach, Icons.park_rounded),
-      ('交通工具', 'Vehicles', _butter, Icons.directions_car_rounded),
-      ('节日快乐', 'Festivals', _rose, Icons.celebration_rounded),
-    ];
+    final lesson = _activeLesson;
     return AppPage(
-      title: '跟着学画',
-      onBack: onBack,
-      child: ListView.separated(
-        itemCount: lessons.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 14),
-        itemBuilder: (context, index) {
-          final lesson = lessons[index];
-          return Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26)),
-            child: Row(
+      title: lesson == null ? '跟着学画' : '跟着学画 · ${lesson.title}',
+      onBack: lesson == null ? widget.onBack : () => setState(() => _activeLesson = null),
+      child: lesson == null
+          ? LessonCatalog(
+              category: _category,
+              progress: _progress,
+              onCategory: (category) => setState(() => _category = category),
+              onOpen: _openLesson,
+            )
+          : GuidedLessonWorkspace(
+              key: ValueKey(lesson.id),
+              lesson: lesson,
+              initialStep: math.min(_progressFor(lesson), lesson.steps.length - 1),
+              onProgress: (completedSteps) => _updateProgress(lesson, completedSteps),
+              onFinish: () => setState(() => _activeLesson = null),
+            ),
+    );
+  }
+}
+
+class LessonCatalog extends StatelessWidget {
+  const LessonCatalog({
+    super.key,
+    required this.category,
+    required this.progress,
+    required this.onCategory,
+    required this.onOpen,
+  });
+
+  final String category;
+  final Map<String, int> progress;
+  final ValueChanged<String> onCategory;
+  final ValueChanged<DrawingLesson> onOpen;
+
+  int _progressFor(DrawingLesson lesson) => math.min(progress[lesson.id] ?? 0, lesson.steps.length);
+
+  @override
+  Widget build(BuildContext context) {
+    const categories = ['全部', '可爱动物', '恐龙世界', '交通工具', '节日快乐'];
+    final visibleLessons = category == '全部'
+        ? _drawingLessons
+        : _drawingLessons.where((lesson) => lesson.category == category).toList();
+    final completedCount = _drawingLessons.where((lesson) => _progressFor(lesson) == lesson.steps.length).length;
+    final continueLesson = _drawingLessons.firstWhere(
+      (lesson) => _progressFor(lesson) > 0 && _progressFor(lesson) < lesson.steps.length,
+      orElse: () => _drawingLessons.first,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns = constraints.maxWidth >= 760;
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 20),
+          children: [
+            LessonWelcomeBanner(
+              lesson: continueLesson,
+              completedSteps: _progressFor(continueLesson),
+              completedLessons: completedCount,
+              onTap: () => onOpen(continueLesson),
+            ),
+            const SizedBox(height: 20),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final item in categories) ...[
+                    ChoiceChip(
+                      label: Text(item),
+                      selected: category == item,
+                      selectedColor: _mint,
+                      side: BorderSide.none,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.w900, color: _ink),
+                      onSelected: (_) => onCategory(item),
+                    ),
+                    const SizedBox(width: 9),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
               children: [
-                Container(width: 110, height: 82, decoration: BoxDecoration(color: lesson.$3, borderRadius: BorderRadius.circular(20)), child: Icon(lesson.$4, size: 42, color: _ink)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(lesson.$1, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                      Text(lesson.$2, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.more_horiz_rounded, color: _brown),
+                const Text('挑一幅开始吧', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const Spacer(),
+                Text('${visibleLessons.length} 节课', style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
               ],
             ),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: twoColumns ? 2 : 1,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                mainAxisExtent: twoColumns ? 170 : 156,
+              ),
+              itemCount: visibleLessons.length,
+              itemBuilder: (context, index) {
+                final lesson = visibleLessons[index];
+                return LessonCourseCard(
+                  lesson: lesson,
+                  completedSteps: _progressFor(lesson),
+                  onTap: () => onOpen(lesson),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class LessonWelcomeBanner extends StatelessWidget {
+  const LessonWelcomeBanner({
+    super.key,
+    required this.lesson,
+    required this.completedSteps,
+    required this.completedLessons,
+    required this.onTap,
+  });
+
+  final DrawingLesson lesson;
+  final int completedSteps;
+  final int completedLessons;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasProgress = completedSteps > 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: _mint,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [BoxShadow(color: _brown.withValues(alpha: .12), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showPreview = constraints.maxWidth >= 460;
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: .78), borderRadius: BorderRadius.circular(99)),
+                          child: Text('已完成 $completedLessons 幅', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('今天也要开心画画', style: TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(hasProgress ? '继续画「${lesson.title}」' : '从一笔开始，画出大世界', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: _ink)),
+                    const SizedBox(height: 5),
+                    Text(
+                      hasProgress ? '已经完成 $completedSteps / ${lesson.steps.length} 步，接着画吧！' : '挑一幅喜欢的作品，我们一步一步来。',
+                      style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      key: const ValueKey('lesson-continue'),
+                      style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                      onPressed: onTap,
+                      icon: Icon(hasProgress ? Icons.play_arrow_rounded : Icons.auto_awesome_rounded),
+                      label: Text(hasProgress ? '继续第 ${completedSteps + 1} 步' : '开始第一课', style: const TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ),
+              ),
+              if (showPreview) ...[
+                const SizedBox(width: 14),
+                Container(
+                  width: 158,
+                  height: 128,
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .72), borderRadius: BorderRadius.circular(24)),
+                  child: CustomPaint(
+                    painter: LessonGuidePainter(art: lesson.art, visibleSteps: lesson.steps.length, accent: lesson.color, preview: true),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ],
+            ],
           );
         },
       ),
@@ -916,20 +1293,1278 @@ class LessonsPage extends StatelessWidget {
   }
 }
 
-class GalleryPage extends StatelessWidget {
-  const GalleryPage({super.key, required this.sketches, required this.onBack});
-  final List<RecentSketch> sketches;
-  final VoidCallback onBack;
+class LessonCourseCard extends StatelessWidget {
+  const LessonCourseCard({super.key, required this.lesson, required this.completedSteps, required this.onTap});
+
+  final DrawingLesson lesson;
+  final int completedSteps;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final progress = completedSteps / lesson.steps.length;
+    final status = completedSteps == 0
+        ? '未开始'
+        : completedSteps == lesson.steps.length
+            ? '已完成'
+            : '$completedSteps / ${lesson.steps.length} 步';
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(26),
+      child: InkWell(
+        key: ValueKey('lesson-card-${lesson.id}'),
+        borderRadius: BorderRadius.circular(26),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Row(
+            children: [
+              Container(
+                width: 126,
+                height: double.infinity,
+                decoration: BoxDecoration(color: lesson.color, borderRadius: BorderRadius.circular(20)),
+                child: CustomPaint(
+                  painter: LessonGuidePainter(art: lesson.art, visibleSteps: lesson.steps.length, accent: lesson.color, preview: true),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Text(lesson.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
+                        const Icon(Icons.arrow_forward_rounded, color: _orange, size: 22),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(lesson.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 13, height: 1.25, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        const Icon(Icons.signal_cellular_alt_rounded, size: 15, color: _brown),
+                        const SizedBox(width: 4),
+                        const Text('入门', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _muted)),
+                        const SizedBox(width: 10),
+                        const Icon(Icons.schedule_rounded, size: 15, color: _brown),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(lesson.duration, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _muted))),
+                        Text(status, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _orange)),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(value: progress, minHeight: 6, backgroundColor: const Color(0xFFF3E9DC), color: _orange),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class GuidedLessonWorkspace extends StatefulWidget {
+  const GuidedLessonWorkspace({
+    super.key,
+    required this.lesson,
+    required this.initialStep,
+    required this.onProgress,
+    required this.onFinish,
+  });
+
+  final DrawingLesson lesson;
+  final int initialStep;
+  final ValueChanged<int> onProgress;
+  final VoidCallback onFinish;
+
+  @override
+  State<GuidedLessonWorkspace> createState() => _GuidedLessonWorkspaceState();
+}
+
+class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
+  final _strokes = <DrawingStroke>[];
+  final _redoStack = <DrawingStroke>[];
+  DrawingStroke? _activeStroke;
+  int? _activePointer;
+  late int _stepIndex;
+  DrawingTool _tool = DrawingTool.crayon;
+  Color _color = _orange;
+  double _width = 10;
+  bool _showGuide = true;
+
+  bool get _canUndo => _strokes.isNotEmpty;
+  bool get _canRedo => _redoStack.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _stepIndex = widget.initialStep;
+  }
+
+  double _pressure(PointerEvent event) {
+    if (event.kind != ui.PointerDeviceKind.stylus && event.kind != ui.PointerDeviceKind.invertedStylus) return 1;
+    if (event.pressureMax <= event.pressureMin) return 1;
+    return ((event.pressure - event.pressureMin) / (event.pressureMax - event.pressureMin)).clamp(.35, 1.4);
+  }
+
+  void _startStroke(PointerDownEvent event) {
+    if (_activePointer != null) return;
+    final stroke = DrawingStroke(
+      tool: _tool,
+      color: _tool == DrawingTool.eraser ? Colors.white : _color,
+      baseWidth: _tool == DrawingTool.eraser ? _width * 2.4 : _width,
+      points: [DrawingPoint(event.localPosition, _pressure(event))],
+    );
+    setState(() {
+      _activePointer = event.pointer;
+      _activeStroke = stroke;
+      _redoStack.clear();
+      _strokes.add(stroke);
+    });
+  }
+
+  void _extendStroke(PointerMoveEvent event) {
+    if (event.pointer != _activePointer) return;
+    setState(() => _activeStroke?.points.add(DrawingPoint(event.localPosition, _pressure(event))));
+  }
+
+  void _endStroke(PointerEvent event) {
+    if (event.pointer != _activePointer) return;
+    _activePointer = null;
+    _activeStroke = null;
+  }
+
+  void _undo() {
+    if (!_canUndo) return;
+    setState(() => _redoStack.add(_strokes.removeLast()));
+  }
+
+  void _redo() {
+    if (!_canRedo) return;
+    setState(() => _strokes.add(_redoStack.removeLast()));
+  }
+
+  Future<void> _confirmClear() async {
+    if (_strokes.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空这张画吗？'),
+        content: const Text('清空后还可以用“撤销”找回来。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('继续画')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('清空')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _redoStack
+        ..clear()
+        ..addAll(_strokes);
+      _strokes.clear();
+    });
+  }
+
+  void _previousStep() {
+    if (_stepIndex == 0) return;
+    setState(() => _stepIndex--);
+  }
+
+  void _nextStep() {
+    if (_stepIndex < widget.lesson.steps.length - 1) {
+      widget.onProgress(_stepIndex + 1);
+      setState(() => _stepIndex++);
+      return;
+    }
+    widget.onProgress(widget.lesson.steps.length);
+    _showCompletion();
+  }
+
+  Future<void> _showCompletion() async {
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.auto_awesome_rounded, color: _orange, size: 48),
+        title: const Text('画好啦！'),
+        content: const Text('每一笔都很特别，你完成了今天的绘画课程。', textAlign: TextAlign.center),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, 'restart'), child: const Text('再画一次')),
+          FilledButton(onPressed: () => Navigator.pop(context, 'catalog'), child: const Text('返回课程')),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (result == 'restart') {
+      setState(() {
+        _stepIndex = 0;
+        _strokes.clear();
+        _redoStack.clear();
+      });
+      widget.onProgress(0);
+    } else if (result == 'catalog') {
+      widget.onFinish();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sideBySide = constraints.maxWidth >= 760 && constraints.maxHeight >= 520;
+        final canvas = _buildCanvas();
+        final steps = _buildStepPanel();
+        if (sideBySide) {
+          return Row(
+            children: [
+              Expanded(child: canvas),
+              const SizedBox(width: 16),
+              SizedBox(width: 300, child: steps),
+            ],
+          );
+        }
+        return ListView(
+          children: [
+            SizedBox(height: math.max(330, constraints.maxHeight * .72), child: canvas),
+            const SizedBox(height: 14),
+            SizedBox(height: 430, child: steps),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCanvas() {
+    final colors = [
+      (_orange, '橙色'),
+      (const Color(0xFFFFA600), '黄色'),
+      (const Color(0xFF20B26B), '绿色'),
+      (const Color(0xFF45A7E8), '蓝色'),
+      (const Color(0xFF8C63E8), '紫色'),
+      (_ink, '深棕色'),
+    ];
+    return Column(
+      children: [
+        Expanded(
+          child: RepaintBoundary(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Listener(
+                    key: const ValueKey('lesson-guided-canvas'),
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: _startStroke,
+                    onPointerMove: _extendStroke,
+                    onPointerUp: _endStroke,
+                    onPointerCancel: _endStroke,
+                    child: CustomPaint(
+                      painter: NativeCanvasPainter(
+                        strokes: _strokes,
+                        guide: _showGuide
+                            ? LessonGuidePainter(
+                                art: widget.lesson.art,
+                                visibleSteps: _stepIndex + 1,
+                                accent: widget.lesson.color,
+                              )
+                            : null,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 12),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .94), borderRadius: BorderRadius.circular(99)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.visibility_outlined, size: 18, color: _brown),
+                          const SizedBox(width: 5),
+                          const Text('显示提示', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                          Switch(value: _showGuide, activeTrackColor: _mint, activeThumbColor: const Color(0xFF07523E), onChanged: (value) => setState(() => _showGuide = value)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: 62,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ToolChip(icon: Icons.edit_rounded, selected: _tool == DrawingTool.crayon, onTap: () => setState(() => _tool = DrawingTool.crayon), tooltip: '蜡笔'),
+                const SizedBox(width: 5),
+                ToolChip(icon: Icons.cleaning_services_rounded, selected: _tool == DrawingTool.eraser, onTap: () => setState(() => _tool = DrawingTool.eraser), tooltip: '橡皮'),
+                const SizedBox(width: 5),
+                ToolChip(icon: Icons.undo_rounded, selected: false, onTap: _canUndo ? _undo : null, tooltip: '撤销'),
+                const SizedBox(width: 5),
+                ToolChip(icon: Icons.redo_rounded, selected: false, onTap: _canRedo ? _redo : null, tooltip: '重做'),
+                const SizedBox(width: 10),
+                for (final item in colors) ...[
+                  Tooltip(
+                    message: item.$2,
+                    child: Semantics(
+                      button: true,
+                      selected: _color == item.$1 && _tool != DrawingTool.eraser,
+                      label: '选择${item.$2}',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(99),
+                        onTap: () => setState(() {
+                          _color = item.$1;
+                          _tool = DrawingTool.crayon;
+                        }),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: item.$1,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _color == item.$1 && _tool != DrawingTool.eraser ? _ink : Colors.white, width: 3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                SizedBox(
+                  width: 120,
+                  child: Slider(value: _width, min: 4, max: 24, divisions: 10, activeColor: _color, onChanged: (value) => setState(() => _width = value)),
+                ),
+                IconButton.filledTonal(tooltip: '清空画布', onPressed: _strokes.isEmpty ? null : _confirmClear, icon: const Icon(Icons.delete_outline_rounded)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepPanel() {
+    final step = widget.lesson.steps[_stepIndex];
+    final isLast = _stepIndex == widget.lesson.steps.length - 1;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .07), blurRadius: 18, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                decoration: BoxDecoration(color: widget.lesson.color, borderRadius: BorderRadius.circular(99)),
+                child: Text('第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步', style: const TextStyle(fontWeight: FontWeight.w900, color: _ink)),
+              ),
+              const Spacer(),
+              Text(widget.lesson.duration, style: const TextStyle(fontSize: 12, color: _muted, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(value: (_stepIndex + 1) / widget.lesson.steps.length, minHeight: 7, backgroundColor: const Color(0xFFF3E9DC), color: _orange),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 145,
+                    width: double.infinity,
+                    decoration: BoxDecoration(color: widget.lesson.color.withValues(alpha: .72), borderRadius: BorderRadius.circular(22)),
+                    child: CustomPaint(
+                      painter: LessonGuidePainter(art: widget.lesson.art, visibleSteps: _stepIndex + 1, accent: widget.lesson.color, preview: true),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(step.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _ink)),
+                  const SizedBox(height: 7),
+                  Text(step.description, style: const TextStyle(fontSize: 15, height: 1.4, color: _muted, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: const Color(0xFFFFF4D6), borderRadius: BorderRadius.circular(16)),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.lightbulb_rounded, color: Color(0xFFE49A00), size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(step.tip, style: const TextStyle(fontSize: 13, height: 1.35, color: _ink, fontWeight: FontWeight.w700))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                key: const ValueKey('lesson-previous-step'),
+                onPressed: _stepIndex == 0 ? null : _previousStep,
+                icon: const Icon(Icons.arrow_back_rounded),
+                label: const Text('上一步'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const ValueKey('lesson-next-step'),
+                  style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                  onPressed: _nextStep,
+                  icon: Icon(isLast ? Icons.celebration_rounded : Icons.arrow_forward_rounded),
+                  label: Text(isLast ? '完成课程' : '下一步', style: const TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LessonGuidePainter extends CustomPainter {
+  LessonGuidePainter({
+    required this.art,
+    required this.visibleSteps,
+    required this.accent,
+    this.preview = false,
+  });
+
+  final LessonArt art;
+  final int visibleSteps;
+  final Color accent;
+  final bool preview;
+
+  Paint _linePaint(int stage, double scale) {
+    final isCurrent = stage == visibleSteps - 1;
+    return Paint()
+      ..color = preview
+          ? _ink.withValues(alpha: .78)
+          : (isCurrent ? _orange.withValues(alpha: .58) : _brown.withValues(alpha: .24))
+      ..strokeWidth = (preview ? 4 : 5) * scale
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+  }
+
+  Paint _dotPaint(int stage) => Paint()
+    ..color = preview
+        ? _ink.withValues(alpha: .82)
+        : (stage == visibleSteps - 1 ? _orange.withValues(alpha: .62) : _brown.withValues(alpha: .28));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final unit = math.min(size.width, size.height);
+    final scale = unit / 300;
+    final center = Offset(size.width / 2, size.height / 2 + 7 * scale);
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    switch (art) {
+      case LessonArt.cat:
+        _paintCat(canvas, scale);
+      case LessonArt.dinosaur:
+        _paintDinosaur(canvas, scale);
+      case LessonArt.car:
+        _paintCar(canvas, scale);
+      case LessonArt.lantern:
+        _paintLantern(canvas, scale);
+    }
+    canvas.restore();
+  }
+
+  void _paintCat(Canvas canvas, double s) {
+    if (visibleSteps >= 1) {
+      canvas.drawCircle(Offset(0, 4 * s), 72 * s, _linePaint(0, s));
+    }
+    if (visibleSteps >= 2) {
+      final leftEar = Path()
+        ..moveTo(-58 * s, -39 * s)
+        ..lineTo(-47 * s, -102 * s)
+        ..lineTo(-12 * s, -62 * s);
+      final rightEar = Path()
+        ..moveTo(58 * s, -39 * s)
+        ..lineTo(47 * s, -102 * s)
+        ..lineTo(12 * s, -62 * s);
+      canvas.drawPath(leftEar, _linePaint(1, s));
+      canvas.drawPath(rightEar, _linePaint(1, s));
+    }
+    if (visibleSteps >= 3) {
+      final paint = _linePaint(2, s);
+      canvas.drawArc(Rect.fromCenter(center: Offset(-27 * s, -3 * s), width: 25 * s, height: 18 * s), .12, math.pi * .78, false, paint);
+      canvas.drawArc(Rect.fromCenter(center: Offset(27 * s, -3 * s), width: 25 * s, height: 18 * s), .12, math.pi * .78, false, paint);
+      canvas.drawCircle(Offset(0, 18 * s), 5 * s, _dotPaint(2));
+    }
+    if (visibleSteps >= 4) {
+      final paint = _linePaint(3, s);
+      canvas.drawArc(Rect.fromCenter(center: Offset(-8 * s, 28 * s), width: 18 * s, height: 14 * s), 0, math.pi, false, paint);
+      canvas.drawArc(Rect.fromCenter(center: Offset(8 * s, 28 * s), width: 18 * s, height: 14 * s), 0, math.pi, false, paint);
+      for (final y in [19.0, 31.0, 43.0]) {
+        canvas.drawLine(Offset(-18 * s, y * s), Offset(-84 * s, (y - 8) * s), paint);
+        canvas.drawLine(Offset(18 * s, y * s), Offset(84 * s, (y - 8) * s), paint);
+      }
+    }
+  }
+
+  void _paintDinosaur(Canvas canvas, double s) {
+    if (visibleSteps >= 1) {
+      canvas.drawOval(Rect.fromCenter(center: Offset(-15 * s, 18 * s), width: 142 * s, height: 92 * s), _linePaint(0, s));
+    }
+    if (visibleSteps >= 2) {
+      final neck = Path()
+        ..moveTo(36 * s, -5 * s)
+        ..quadraticBezierTo(63 * s, -29 * s, 63 * s, -66 * s);
+      canvas.drawPath(neck, _linePaint(1, s));
+      canvas.drawCircle(Offset(68 * s, -77 * s), 31 * s, _linePaint(1, s));
+    }
+    if (visibleSteps >= 3) {
+      final paint = _linePaint(2, s);
+      canvas.drawLine(Offset(-58 * s, 48 * s), Offset(-64 * s, 91 * s), paint);
+      canvas.drawLine(Offset(5 * s, 57 * s), Offset(10 * s, 91 * s), paint);
+      final tail = Path()
+        ..moveTo(-82 * s, 4 * s)
+        ..quadraticBezierTo(-122 * s, -3 * s, -130 * s, -38 * s);
+      canvas.drawPath(tail, paint);
+    }
+    if (visibleSteps >= 4) {
+      final paint = _linePaint(3, s);
+      for (var i = 0; i < 4; i++) {
+        final x = (-58 + i * 30) * s;
+        final spike = Path()
+          ..moveTo(x, -25 * s)
+          ..lineTo(x + 13 * s, -54 * s)
+          ..lineTo(x + 24 * s, -24 * s);
+        canvas.drawPath(spike, paint);
+      }
+      canvas.drawCircle(Offset(78 * s, -83 * s), 4 * s, _dotPaint(3));
+      canvas.drawArc(Rect.fromCenter(center: Offset(76 * s, -66 * s), width: 22 * s, height: 13 * s), 0, math.pi, false, paint);
+    }
+  }
+
+  void _paintCar(Canvas canvas, double s) {
+    if (visibleSteps >= 1) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, 18 * s), width: 188 * s, height: 66 * s), Radius.circular(17 * s)),
+        _linePaint(0, s),
+      );
+    }
+    if (visibleSteps >= 2) {
+      final roof = Path()
+        ..moveTo(-58 * s, -15 * s)
+        ..lineTo(-30 * s, -61 * s)
+        ..lineTo(43 * s, -61 * s)
+        ..lineTo(72 * s, -15 * s);
+      canvas.drawPath(roof, _linePaint(1, s));
+    }
+    if (visibleSteps >= 3) {
+      final paint = _linePaint(2, s);
+      canvas.drawCircle(Offset(-56 * s, 55 * s), 24 * s, paint);
+      canvas.drawCircle(Offset(57 * s, 55 * s), 24 * s, paint);
+      canvas.drawCircle(Offset(-56 * s, 55 * s), 7 * s, _dotPaint(2));
+      canvas.drawCircle(Offset(57 * s, 55 * s), 7 * s, _dotPaint(2));
+    }
+    if (visibleSteps >= 4) {
+      final paint = _linePaint(3, s);
+      canvas.drawLine(Offset(3 * s, -57 * s), Offset(3 * s, -16 * s), paint);
+      canvas.drawLine(Offset(-28 * s, -55 * s), Offset(-49 * s, -17 * s), paint);
+      canvas.drawCircle(Offset(80 * s, 15 * s), 8 * s, _dotPaint(3));
+      canvas.drawLine(Offset(-88 * s, 12 * s), Offset(-70 * s, 12 * s), paint);
+    }
+  }
+
+  void _paintLantern(Canvas canvas, double s) {
+    if (visibleSteps >= 1) {
+      canvas.drawOval(Rect.fromCenter(center: Offset(0, -8 * s), width: 126 * s, height: 150 * s), _linePaint(0, s));
+    }
+    if (visibleSteps >= 2) {
+      final paint = _linePaint(1, s);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, -87 * s), width: 72 * s, height: 18 * s), Radius.circular(5 * s)), paint);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, 71 * s), width: 72 * s, height: 18 * s), Radius.circular(5 * s)), paint);
+    }
+    if (visibleSteps >= 3) {
+      final paint = _linePaint(2, s);
+      canvas.drawArc(Rect.fromCenter(center: Offset(0, -106 * s), width: 70 * s, height: 58 * s), math.pi, math.pi, false, paint);
+      canvas.drawLine(Offset(0, 81 * s), Offset(0, 123 * s), paint);
+      for (final x in [-18.0, 0.0, 18.0]) {
+        canvas.drawLine(Offset(x * s, 123 * s), Offset(x * s, 148 * s), paint);
+      }
+    }
+    if (visibleSteps >= 4) {
+      final paint = _linePaint(3, s);
+      canvas.drawArc(Rect.fromCenter(center: Offset(0, -8 * s), width: 72 * s, height: 148 * s), -math.pi / 2, math.pi, false, paint);
+      canvas.drawArc(Rect.fromCenter(center: Offset(0, -8 * s), width: 72 * s, height: 148 * s), math.pi / 2, math.pi, false, paint);
+      for (final offset in [const Offset(-90, -58), const Offset(92, -30), const Offset(-86, 36)]) {
+        canvas.drawCircle(offset * s, 5 * s, _dotPaint(3));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant LessonGuidePainter oldDelegate) {
+    return oldDelegate.art != art || oldDelegate.visibleSteps != visibleSteps || oldDelegate.accent != accent || oldDelegate.preview != preview;
+  }
+}
+
+enum GalleryFilter { all, recent, favorite }
+
+class GalleryPage extends StatefulWidget {
+  const GalleryPage({
+    super.key,
+    required this.artworks,
+    required this.onBack,
+    required this.onCreateNew,
+    required this.onToggleFavorite,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final List<GalleryArtwork> artworks;
+  final VoidCallback onBack;
+  final VoidCallback onCreateNew;
+  final ValueChanged<String> onToggleFavorite;
+  final void Function(String id, String title) onRename;
+  final ValueChanged<String> onDelete;
+
+  @override
+  State<GalleryPage> createState() => _GalleryPageState();
+}
+
+class _GalleryPageState extends State<GalleryPage> {
+  GalleryFilter _filter = GalleryFilter.all;
+  String? _selectedArtworkId;
+
+  GalleryArtwork? get _selectedArtwork {
+    for (final artwork in widget.artworks) {
+      if (artwork.id == _selectedArtworkId) return artwork;
+    }
+    return null;
+  }
+
+  List<GalleryArtwork> get _visibleArtworks {
+    return switch (_filter) {
+      GalleryFilter.all => widget.artworks,
+      GalleryFilter.recent => widget.artworks.where((artwork) => artwork.createdLabel != '上周').toList(),
+      GalleryFilter.favorite => widget.artworks.where((artwork) => artwork.isFavorite).toList(),
+    };
+  }
+
+  Future<void> _rename(GalleryArtwork artwork) async {
+    var draftTitle = artwork.title;
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('给作品换个名字'),
+        content: TextFormField(
+          key: const ValueKey('gallery-rename-field'),
+          initialValue: artwork.title,
+          autofocus: true,
+          maxLength: 20,
+          decoration: const InputDecoration(labelText: '作品名称', border: OutlineInputBorder()),
+          onChanged: (value) => draftTitle = value,
+          onFieldSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, draftTitle), child: const Text('保存名字')),
+        ],
+      ),
+    );
+    final trimmed = title?.trim();
+    if (trimmed == null || trimmed.isEmpty || !mounted) return;
+    widget.onRename(artwork.id, trimmed);
+  }
+
+  Future<void> _delete(GalleryArtwork artwork) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除这幅作品吗？'),
+        content: Text('「${artwork.title}」删除后无法恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('保留作品')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB33A2B)),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _selectedArtworkId = null);
+    widget.onDelete(artwork.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _selectedArtwork;
     return AppPage(
-      title: '我的作品集',
-      onBack: onBack,
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 230, childAspectRatio: .82, mainAxisSpacing: 16, crossAxisSpacing: 16),
-        itemCount: sketches.length,
-        itemBuilder: (context, index) => RecentCard(sketch: sketches[index]),
+      title: selected == null ? '我的作品集' : '作品详情 · ${selected.title}',
+      onBack: selected == null ? widget.onBack : () => setState(() => _selectedArtworkId = null),
+      child: selected == null
+          ? GalleryOverview(
+              artworks: _visibleArtworks,
+              totalCount: widget.artworks.length,
+              favoriteCount: widget.artworks.where((artwork) => artwork.isFavorite).length,
+              createdCount: widget.artworks.where((artwork) => artwork.isUserCreated).length,
+              filter: _filter,
+              onFilter: (filter) => setState(() => _filter = filter),
+              onOpen: (artwork) => setState(() => _selectedArtworkId = artwork.id),
+              onCreateNew: widget.onCreateNew,
+              onToggleFavorite: widget.onToggleFavorite,
+            )
+          : GalleryArtworkDetail(
+              artwork: selected,
+              onFavorite: () => widget.onToggleFavorite(selected.id),
+              onCreateNew: widget.onCreateNew,
+              onRename: selected.isUserCreated ? () => _rename(selected) : null,
+              onDelete: selected.isUserCreated ? () => _delete(selected) : null,
+            ),
+    );
+  }
+}
+
+class GalleryOverview extends StatelessWidget {
+  const GalleryOverview({
+    super.key,
+    required this.artworks,
+    required this.totalCount,
+    required this.favoriteCount,
+    required this.createdCount,
+    required this.filter,
+    required this.onFilter,
+    required this.onOpen,
+    required this.onCreateNew,
+    required this.onToggleFavorite,
+  });
+
+  final List<GalleryArtwork> artworks;
+  final int totalCount;
+  final int favoriteCount;
+  final int createdCount;
+  final GalleryFilter filter;
+  final ValueChanged<GalleryFilter> onFilter;
+  final ValueChanged<GalleryArtwork> onOpen;
+  final VoidCallback onCreateNew;
+  final ValueChanged<String> onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxExtent = constraints.maxWidth >= 760 ? 250.0 : 230.0;
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 20),
+          children: [
+            GalleryHero(
+              artworks: artworks.isEmpty ? const [] : artworks.take(3).toList(),
+              totalCount: totalCount,
+              favoriteCount: favoriteCount,
+              createdCount: createdCount,
+              onCreateNew: onCreateNew,
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        GalleryFilterChip(label: '全部', filter: GalleryFilter.all, selected: filter == GalleryFilter.all, onTap: onFilter),
+                        const SizedBox(width: 9),
+                        GalleryFilterChip(label: '最近', filter: GalleryFilter.recent, selected: filter == GalleryFilter.recent, onTap: onFilter),
+                        const SizedBox(width: 9),
+                        GalleryFilterChip(label: '收藏', filter: GalleryFilter.favorite, selected: filter == GalleryFilter.favorite, onTap: onFilter),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('${artworks.length} 幅作品', style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (artworks.isEmpty)
+              GalleryEmptyState(isFavorite: filter == GalleryFilter.favorite, onCreateNew: onCreateNew)
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: maxExtent,
+                  mainAxisExtent: 250,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                ),
+                itemCount: artworks.length,
+                itemBuilder: (context, index) {
+                  final artwork = artworks[index];
+                  return GalleryArtworkCard(
+                    artwork: artwork,
+                    onTap: () => onOpen(artwork),
+                    onFavorite: () => onToggleFavorite(artwork.id),
+                  );
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class GalleryFilterChip extends StatelessWidget {
+  const GalleryFilterChip({
+    super.key,
+    required this.label,
+    required this.filter,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final GalleryFilter filter;
+  final bool selected;
+  final ValueChanged<GalleryFilter> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      key: ValueKey('gallery-filter-$label'),
+      label: Text(label),
+      avatar: Icon(
+        filter == GalleryFilter.favorite
+            ? Icons.favorite_rounded
+            : filter == GalleryFilter.recent
+                ? Icons.schedule_rounded
+                : Icons.grid_view_rounded,
+        size: 18,
+      ),
+      selected: selected,
+      selectedColor: _butter,
+      side: BorderSide.none,
+      labelStyle: const TextStyle(color: _ink, fontWeight: FontWeight.w900),
+      onSelected: (_) => onTap(filter),
+    );
+  }
+}
+
+class GalleryHero extends StatelessWidget {
+  const GalleryHero({
+    super.key,
+    required this.artworks,
+    required this.totalCount,
+    required this.favoriteCount,
+    required this.createdCount,
+    required this.onCreateNew,
+  });
+
+  final List<GalleryArtwork> artworks;
+  final int totalCount;
+  final int favoriteCount;
+  final int createdCount;
+  final VoidCallback onCreateNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: _butter,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [BoxShadow(color: _brown.withValues(alpha: .12), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showPreview = constraints.maxWidth >= 560 && artworks.isNotEmpty;
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('米娅的小画展', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: _ink)),
+                    const SizedBox(height: 4),
+                    const Text('每一幅画，都是独一无二的小故事。', style: TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        GalleryStat(icon: Icons.photo_library_rounded, text: '$totalCount 幅作品'),
+                        GalleryStat(icon: Icons.favorite_rounded, text: '$favoriteCount 个收藏'),
+                        GalleryStat(icon: Icons.brush_rounded, text: '$createdCount 幅新画'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      key: const ValueKey('gallery-create-new'),
+                      style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                      onPressed: onCreateNew,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('画一幅新的', style: TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ),
+              ),
+              if (showPreview) ...[
+                const SizedBox(width: 18),
+                SizedBox(
+                  width: 230,
+                  height: 132,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      for (var i = 0; i < artworks.length; i++)
+                        Transform.translate(
+                          offset: Offset((i - 1) * 44, i.isEven ? -3 : 5),
+                          child: Transform.rotate(
+                            angle: (i - 1) * .08,
+                            child: Container(
+                              width: 108,
+                              height: 116,
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 12, offset: const Offset(0, 6))],
+                              ),
+                              child: ArtworkThumbnail(artwork: artworks[i]),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class GalleryStat extends StatelessWidget {
+  const GalleryStat({super.key, required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .72), borderRadius: BorderRadius.circular(99)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: _brown, size: 16),
+          const SizedBox(width: 5),
+          Text(text, style: const TextStyle(fontSize: 12, color: _ink, fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+}
+
+class GalleryArtworkCard extends StatelessWidget {
+  const GalleryArtworkCard({super.key, required this.artwork, required this.onTap, required this.onFavorite});
+
+  final GalleryArtwork artwork;
+  final VoidCallback onTap;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(26),
+      child: InkWell(
+        key: ValueKey('gallery-card-${artwork.id}'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(26),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: ArtworkThumbnail(artwork: artwork)),
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: IconButton.filled(
+                        key: ValueKey('gallery-favorite-${artwork.id}'),
+                        tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: .92),
+                          foregroundColor: artwork.isFavorite ? _orange : _brown,
+                        ),
+                        onPressed: onFavorite,
+                        icon: Icon(artwork.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(artwork.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _ink)),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Icon(artwork.isUserCreated ? Icons.brush_rounded : Icons.auto_awesome_rounded, size: 14, color: _muted),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(artwork.isUserCreated ? '自由创作 · ${artwork.createdLabel}' : '示例作品 · ${artwork.createdLabel}', style: const TextStyle(fontSize: 12, color: _muted, fontWeight: FontWeight.w700))),
+                  const Icon(Icons.arrow_forward_rounded, size: 18, color: _orange),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ArtworkThumbnail extends StatelessWidget {
+  const ArtworkThumbnail({super.key, required this.artwork});
+
+  final GalleryArtwork artwork;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: ColoredBox(
+        color: artwork.color,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: artwork.pngBytes != null
+              ? Image.memory(artwork.pngBytes!, fit: BoxFit.contain, gaplessPlayback: true)
+              : CustomPaint(
+                  painter: SketchPainter(artwork.kind ?? SketchKind.sun),
+                  child: const SizedBox.expand(),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class GalleryArtworkDetail extends StatelessWidget {
+  const GalleryArtworkDetail({
+    super.key,
+    required this.artwork,
+    required this.onFavorite,
+    required this.onCreateNew,
+    this.onRename,
+    this.onDelete,
+  });
+
+  final GalleryArtwork artwork;
+  final VoidCallback onFavorite;
+  final VoidCallback onCreateNew;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sideBySide = constraints.maxWidth >= 720 && constraints.maxHeight >= 500;
+        final preview = Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
+          child: ArtworkThumbnail(artwork: artwork),
+        );
+        final details = Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: artwork.color, borderRadius: BorderRadius.circular(99)),
+                    child: Text(artwork.isUserCreated ? '我的创作' : '画室示例', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    key: ValueKey('gallery-detail-favorite-${artwork.id}'),
+                    tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
+                    onPressed: onFavorite,
+                    icon: Icon(artwork.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: artwork.isFavorite ? _orange : _brown),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(artwork.title, style: const TextStyle(fontSize: 29, height: 1.1, fontWeight: FontWeight.w900, color: _ink)),
+              const SizedBox(height: 8),
+              Text('${artwork.createdLabel}完成', style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: const Color(0xFFFFF4D6), borderRadius: BorderRadius.circular(18)),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, color: _orange, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('每一次创作都值得被好好收藏。给喜欢的作品点一颗爱心吧！', style: TextStyle(height: 1.4, color: _ink, fontWeight: FontWeight.w700))),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text('作品信息', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+              const SizedBox(height: 8),
+              GalleryInfoRow(icon: Icons.schedule_rounded, label: '完成时间', value: artwork.createdLabel),
+              const SizedBox(height: 8),
+              GalleryInfoRow(icon: Icons.palette_rounded, label: '创作工具', value: artwork.isUserCreated ? '自由画板' : '画室示例'),
+              const SizedBox(height: 8),
+              const GalleryInfoRow(icon: Icons.crop_landscape_rounded, label: '画布形式', value: '横屏画布'),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                  onPressed: onCreateNew,
+                  icon: const Icon(Icons.brush_rounded),
+                  label: const Text('再画一幅', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+              if (onRename != null || onDelete != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (onRename != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('gallery-rename'),
+                          onPressed: onRename,
+                          icon: const Icon(Icons.edit_rounded),
+                          label: const Text('重命名'),
+                        ),
+                      ),
+                    if (onRename != null && onDelete != null) const SizedBox(width: 10),
+                    if (onDelete != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('gallery-delete'),
+                          style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFB33A2B)),
+                          onPressed: onDelete,
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          label: const Text('删除'),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        );
+
+        if (sideBySide) {
+          return Row(
+            children: [
+              Expanded(child: preview),
+              const SizedBox(width: 16),
+              SizedBox(width: 330, child: details),
+            ],
+          );
+        }
+        return ListView(
+          children: [
+            SizedBox(height: 340, child: preview),
+            const SizedBox(height: 14),
+            SizedBox(height: artwork.isUserCreated ? 400 : 340, child: details),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class GalleryInfoRow extends StatelessWidget {
+  const GalleryInfoRow({super.key, required this.icon, required this.label, required this.value});
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: _brown),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontSize: 13, color: _muted, fontWeight: FontWeight.w700)),
+        const Spacer(),
+        Text(value, style: const TextStyle(fontSize: 13, color: _ink, fontWeight: FontWeight.w900)),
+      ],
+    );
+  }
+}
+
+class GalleryEmptyState extends StatelessWidget {
+  const GalleryEmptyState({super.key, required this.isFavorite, required this.onCreateNew});
+
+  final bool isFavorite;
+  final VoidCallback onCreateNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 240),
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28)),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(isFavorite ? Icons.favorite_border_rounded : Icons.photo_library_outlined, size: 52, color: _brown),
+          const SizedBox(height: 12),
+          Text(isFavorite ? '还没有收藏作品' : '作品集还是空的', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _ink)),
+          const SizedBox(height: 6),
+          Text(isFavorite ? '看到喜欢的作品，就点亮右上角的爱心。' : '去画板完成第一幅作品吧！', textAlign: TextAlign.center, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 14),
+          if (!isFavorite) FilledButton.icon(onPressed: onCreateNew, icon: const Icon(Icons.brush_rounded), label: const Text('开始画画')),
+        ],
       ),
     );
   }
@@ -1016,9 +2651,20 @@ class AppPage extends StatelessWidget {
         children: [
           Row(
             children: [
-              IconButton.filledTonal(onPressed: onBack, icon: const Icon(Icons.arrow_back_rounded)),
+              IconButton.filledTonal(
+                key: const ValueKey('app-page-back'),
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
               const SizedBox(width: 12),
-              Text(title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 18),
