@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/main.dart';
 
 void main() {
   testWidgets('shows Lovable-inspired home screen', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const LittleArtistVerseApp());
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
 
     expect(find.text('米娅!'), findsOneWidget);
     expect(find.text('今天想做什么？'), findsOneWidget);
@@ -23,7 +24,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const LittleArtistVerseApp());
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
     await tester.tap(find.text('跟着学画'));
     await tester.pumpAndSettle();
 
@@ -65,12 +66,48 @@ void main() {
     expect(find.text('完成课程'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('lesson-next-step')));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
     await tester.pumpAndSettle();
     expect(find.text('画好啦！'), findsOneWidget);
+    expect(find.textContaining('自动保存到作品集'), findsOneWidget);
 
     await tester.tap(find.text('返回课程'));
     await tester.pumpAndSettle();
     expect(find.text('已完成 1 幅'), findsOneWidget);
+
+    await tester.tap(find.text('作品集'));
+    await tester.pumpAndSettle();
+    expect(find.text('课程作品 · 圆脸小猫'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('free drawing draft is restored after leaving the page', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryArtistStore();
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('free-drawing-canvas')),
+      const Offset(90, 45),
+    );
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await tester.tap(find.text('首页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已恢复上次自动保存的草稿'), findsOneWidget);
+    expect(find.byTooltip('撤销'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -82,7 +119,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const LittleArtistVerseApp());
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
     await tester.ensureVisible(find.text('跟着学画'));
     await tester.tap(find.text('跟着学画'));
     await tester.pumpAndSettle();
@@ -101,7 +138,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const LittleArtistVerseApp());
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
     await tester.tap(find.text('我的作品集'));
     await tester.pumpAndSettle();
 
@@ -133,7 +170,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const LittleArtistVerseApp());
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
     await tester.tap(find.text('自由画画'));
     await tester.pumpAndSettle();
 

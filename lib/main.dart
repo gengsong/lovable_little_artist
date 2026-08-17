@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:lovable_little_artist/local_artist_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,8 +26,14 @@ const _rose = Color(0xFFF2DEE8);
 const _orange = Color(0xFFFF6B53);
 const _brown = Color(0xFF8A6D5E);
 
+void _ignoreStorageError(Future<void> operation) {
+  unawaited(operation.catchError((Object _) {}));
+}
+
 class LittleArtistVerseApp extends StatelessWidget {
-  const LittleArtistVerseApp({super.key});
+  const LittleArtistVerseApp({super.key, this.store});
+
+  final ArtistStore? store;
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +43,16 @@ class LittleArtistVerseApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: _bg,
-        colorScheme: ColorScheme.fromSeed(seedColor: _orange, brightness: Brightness.light),
-        textTheme: ThemeData.light().textTheme.apply(bodyColor: _ink, displayColor: _ink),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _orange,
+          brightness: Brightness.light,
+        ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: _ink,
+          displayColor: _ink,
+        ),
       ),
-      home: const StudioHome(),
+      home: StudioHome(store: store ?? LocalArtistStore()),
     );
   }
 }
@@ -46,7 +60,9 @@ class LittleArtistVerseApp extends StatelessWidget {
 enum StudioTab { home, draw, lessons, gallery, animation, parent }
 
 class StudioHome extends StatefulWidget {
-  const StudioHome({super.key});
+  const StudioHome({super.key, required this.store});
+
+  final ArtistStore store;
 
   @override
   State<StudioHome> createState() => _StudioHomeState();
@@ -54,7 +70,8 @@ class StudioHome extends StatefulWidget {
 
 class _StudioHomeState extends State<StudioHome> {
   StudioTab tab = StudioTab.home;
-  int _savedArtworkCount = 0;
+  int _nextArtworkNumber = 1;
+  final Map<String, int> _lessonProgress = {};
   final sketches = const [
     RecentSketch('开心的太阳', SketchKind.sun),
     RecentSketch('我的小房子', SketchKind.house),
@@ -62,68 +79,210 @@ class _StudioHomeState extends State<StudioHome> {
     RecentSketch('月亮火箭', SketchKind.rocket),
   ];
   final artworks = <GalleryArtwork>[
-    const GalleryArtwork(id: 'sun', title: '开心的太阳', createdLabel: '今天', color: _butter, kind: SketchKind.sun),
-    const GalleryArtwork(id: 'house', title: '我的小房子', createdLabel: '昨天', color: _mint, kind: SketchKind.house),
-    const GalleryArtwork(id: 'cat', title: '打瞌睡的小猫', createdLabel: '3 天前', color: _peach, kind: SketchKind.cat),
-    const GalleryArtwork(id: 'rocket', title: '月亮火箭', createdLabel: '上周', color: _rose, kind: SketchKind.rocket),
+    const GalleryArtwork(
+      id: 'sun',
+      title: '开心的太阳',
+      createdLabel: '今天',
+      color: _butter,
+      kind: SketchKind.sun,
+    ),
+    const GalleryArtwork(
+      id: 'house',
+      title: '我的小房子',
+      createdLabel: '昨天',
+      color: _mint,
+      kind: SketchKind.house,
+    ),
+    const GalleryArtwork(
+      id: 'cat',
+      title: '打瞌睡的小猫',
+      createdLabel: '3 天前',
+      color: _peach,
+      kind: SketchKind.cat,
+    ),
+    const GalleryArtwork(
+      id: 'rocket',
+      title: '月亮火箭',
+      createdLabel: '上周',
+      color: _rose,
+      kind: SketchKind.rocket,
+    ),
   ];
 
-  void _addArtwork(Uint8List pngBytes) {
+  @override
+  void initState() {
+    super.initState();
+    _restoreLocalState();
+  }
+
+  Future<void> _restoreLocalState() async {
+    final snapshot = await widget.store.load();
+    if (!mounted) return;
     setState(() {
-      _savedArtworkCount++;
-      artworks.insert(
-        0,
-        GalleryArtwork(
-          id: 'drawing-${DateTime.now().microsecondsSinceEpoch}',
-          title: '我的画作 $_savedArtworkCount',
-          createdLabel: '刚刚',
-          color: _mint,
-          pngBytes: pngBytes,
-          isUserCreated: true,
-        ),
-      );
+      _nextArtworkNumber = snapshot.nextArtworkNumber;
+      _lessonProgress
+        ..clear()
+        ..addAll(snapshot.lessonProgress);
+      artworks.insertAll(0, snapshot.artworks.map(_galleryArtworkFromStored));
     });
+  }
+
+  Future<void> _addArtwork(Uint8List pngBytes) async {
+    final now = DateTime.now();
+    final id = 'drawing-${now.microsecondsSinceEpoch}';
+    final artwork = GalleryArtwork(
+      id: id,
+      title: '我的画作 $_nextArtworkNumber',
+      createdLabel: '刚刚',
+      createdAt: now,
+      color: _mint,
+      pngBytes: pngBytes,
+      isUserCreated: true,
+      source: 'free',
+    );
+    await widget.store.saveArtwork(_storedArtworkFromGallery(artwork));
+    if (!mounted) return;
+    setState(() {
+      _nextArtworkNumber++;
+      artworks.insert(0, artwork);
+    });
+  }
+
+  Future<void> _addLessonArtwork(
+    DrawingLesson lesson,
+    Uint8List pngBytes,
+  ) async {
+    final now = DateTime.now();
+    final id = 'lesson-${lesson.id}-${now.microsecondsSinceEpoch}';
+    final artwork = GalleryArtwork(
+      id: id,
+      title: '课程作品 · ${lesson.title}',
+      createdLabel: '刚刚',
+      createdAt: now,
+      color: lesson.color,
+      pngBytes: pngBytes,
+      isUserCreated: true,
+      source: 'lesson',
+      lessonId: lesson.id,
+    );
+    await widget.store.saveArtwork(_storedArtworkFromGallery(artwork));
+    if (!mounted) return;
+    setState(() {
+      _nextArtworkNumber++;
+      artworks.insert(0, artwork);
+    });
+  }
+
+  void _updateLessonProgress(String lessonId, int completedSteps) {
+    setState(() => _lessonProgress[lessonId] = completedSteps);
+    _ignoreStorageError(widget.store.saveLessonProgress(_lessonProgress));
   }
 
   void _toggleArtworkFavorite(String id) {
     final index = artworks.indexWhere((artwork) => artwork.id == id);
     if (index < 0) return;
-    setState(() => artworks[index] = artworks[index].copyWith(isFavorite: !artworks[index].isFavorite));
+    final updated = artworks[index].copyWith(
+      isFavorite: !artworks[index].isFavorite,
+    );
+    setState(() => artworks[index] = updated);
+    if (updated.isUserCreated) {
+      _ignoreStorageError(
+        widget.store.updateArtwork(_storedArtworkFromGallery(updated)),
+      );
+    }
   }
 
   void _renameArtwork(String id, String title) {
     final index = artworks.indexWhere((artwork) => artwork.id == id);
     if (index < 0) return;
-    setState(() => artworks[index] = artworks[index].copyWith(title: title));
+    final updated = artworks[index].copyWith(title: title);
+    setState(() => artworks[index] = updated);
+    if (updated.isUserCreated) {
+      _ignoreStorageError(
+        widget.store.updateArtwork(_storedArtworkFromGallery(updated)),
+      );
+    }
   }
 
-  void _deleteArtwork(String id) => setState(() => artworks.removeWhere((artwork) => artwork.id == id));
+  void _deleteArtwork(String id) {
+    setState(() => artworks.removeWhere((artwork) => artwork.id == id));
+    _ignoreStorageError(widget.store.deleteArtwork(id));
+  }
+
+  GalleryArtwork _galleryArtworkFromStored(StoredArtwork stored) =>
+      GalleryArtwork(
+        id: stored.id,
+        title: stored.title,
+        createdLabel: _relativeDate(stored.createdAt),
+        createdAt: stored.createdAt,
+        color: Color(stored.backgroundColor),
+        pngBytes: stored.pngBytes,
+        isFavorite: stored.isFavorite,
+        isUserCreated: true,
+        source: stored.source,
+        lessonId: stored.lessonId,
+      );
+
+  StoredArtwork _storedArtworkFromGallery(GalleryArtwork artwork) =>
+      StoredArtwork(
+        id: artwork.id,
+        title: artwork.title,
+        createdAt: artwork.createdAt ?? DateTime.now(),
+        fileName: '${artwork.id}.png',
+        isFavorite: artwork.isFavorite,
+        source: artwork.source,
+        backgroundColor: artwork.color.toARGB32(),
+        pngBytes: artwork.pngBytes!,
+        lessonId: artwork.lessonId,
+      );
+
+  String _relativeDate(DateTime createdAt) {
+    final difference = DateTime.now().difference(createdAt.toLocal());
+    if (difference.inMinutes < 2) return '刚刚';
+    if (difference.inHours < 24) return '${difference.inHours} 小时前';
+    if (difference.inDays == 1) return '昨天';
+    if (difference.inDays < 7) return '${difference.inDays} 天前';
+    return '${createdAt.month} 月 ${createdAt.day} 日';
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTablet = constraints.biggest.shortestSide >= 600 && constraints.maxHeight >= 700;
+        final isTablet =
+            constraints.biggest.shortestSide >= 600 &&
+            constraints.maxHeight >= 700;
         final content = switch (tab) {
           StudioTab.home => Dashboard(
-              sketches: sketches,
-              onOpen: (next) => setState(() => tab = next),
-            ),
+            sketches: sketches,
+            onOpen: (next) => setState(() => tab = next),
+          ),
           StudioTab.draw => DrawPage(
-              onBack: () => setState(() => tab = StudioTab.home),
-              onSaved: _addArtwork,
-            ),
-          StudioTab.lessons => LessonsPage(onBack: () => setState(() => tab = StudioTab.home)),
+            onBack: () => setState(() => tab = StudioTab.home),
+            onSaved: _addArtwork,
+            store: widget.store,
+          ),
+          StudioTab.lessons => LessonsPage(
+            onBack: () => setState(() => tab = StudioTab.home),
+            progress: _lessonProgress,
+            onProgress: _updateLessonProgress,
+            onArtworkSaved: _addLessonArtwork,
+            store: widget.store,
+          ),
           StudioTab.gallery => GalleryPage(
-              artworks: artworks,
-              onBack: () => setState(() => tab = StudioTab.home),
-              onCreateNew: () => setState(() => tab = StudioTab.draw),
-              onToggleFavorite: _toggleArtworkFavorite,
-              onRename: _renameArtwork,
-              onDelete: _deleteArtwork,
-            ),
-          StudioTab.animation => AnimationPage(onBack: () => setState(() => tab = StudioTab.home)),
-          StudioTab.parent => ParentPage(onBack: () => setState(() => tab = StudioTab.home)),
+            artworks: artworks,
+            onBack: () => setState(() => tab = StudioTab.home),
+            onCreateNew: () => setState(() => tab = StudioTab.draw),
+            onToggleFavorite: _toggleArtworkFavorite,
+            onRename: _renameArtwork,
+            onDelete: _deleteArtwork,
+          ),
+          StudioTab.animation => AnimationPage(
+            onBack: () => setState(() => tab = StudioTab.home),
+          ),
+          StudioTab.parent => ParentPage(
+            onBack: () => setState(() => tab = StudioTab.home),
+          ),
         };
 
         return Scaffold(
@@ -145,7 +304,9 @@ class _StudioHomeState extends State<StudioHome> {
                 Expanded(
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: isTablet ? 1080 : 520),
+                      constraints: BoxConstraints(
+                        maxWidth: isTablet ? 1080 : 520,
+                      ),
                       child: content,
                     ),
                   ),
@@ -190,8 +351,18 @@ class StudioRail extends StatelessWidget {
               onTap: () => onSelect(item.$1),
             ),
           const Spacer(),
-          NavPill(icon: Icons.translate_rounded, label: 'EN', selected: false, onTap: () {}),
-          NavPill(icon: Icons.verified_user_outlined, label: '家长', selected: selected == StudioTab.parent, onTap: () => onSelect(StudioTab.parent)),
+          NavPill(
+            icon: Icons.translate_rounded,
+            label: 'EN',
+            selected: false,
+            onTap: () {},
+          ),
+          NavPill(
+            icon: Icons.verified_user_outlined,
+            label: '家长',
+            selected: selected == StudioTab.parent,
+            onTap: () => onSelect(StudioTab.parent),
+          ),
           const SizedBox(height: 18),
         ],
       ),
@@ -200,7 +371,13 @@ class StudioRail extends StatelessWidget {
 }
 
 class NavPill extends StatelessWidget {
-  const NavPill({super.key, required this.icon, required this.label, required this.selected, required this.onTap});
+  const NavPill({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -225,7 +402,14 @@ class NavPill extends StatelessWidget {
             children: [
               Icon(icon, color: selected ? _orange : _brown, size: 28),
               const SizedBox(height: 4),
-              Text(label, style: TextStyle(color: selected ? _orange : _brown, fontWeight: FontWeight.w900, fontSize: 12)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? _orange : _brown,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
         ),
@@ -235,7 +419,11 @@ class NavPill extends StatelessWidget {
 }
 
 class StudioBottomNav extends StatelessWidget {
-  const StudioBottomNav({super.key, required this.selected, required this.onSelect});
+  const StudioBottomNav({
+    super.key,
+    required this.selected,
+    required this.onSelect,
+  });
 
   final StudioTab selected;
   final ValueChanged<StudioTab> onSelect;
@@ -257,7 +445,10 @@ class StudioBottomNav extends StatelessWidget {
       child: NavigationBar(
         height: 76,
         backgroundColor: Colors.white,
-        selectedIndex: math.max(0, items.indexWhere((item) => item.$1 == selected)),
+        selectedIndex: math.max(
+          0,
+          items.indexWhere((item) => item.$1 == selected),
+        ),
         onDestinationSelected: (index) => onSelect(items[index].$1),
         indicatorColor: const Color(0xFFFFE4DD),
         destinations: [
@@ -285,13 +476,25 @@ class Dashboard extends StatelessWidget {
       builder: (context, constraints) {
         final isTablet = constraints.maxWidth >= 820;
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(isTablet ? 26 : 20, isTablet ? 20 : 24, isTablet ? 28 : 0, 24),
+          padding: EdgeInsets.fromLTRB(
+            isTablet ? 26 : 20,
+            isTablet ? 20 : 24,
+            isTablet ? 28 : 0,
+            24,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               HeroGreeting(onParent: () => onOpen(StudioTab.parent)),
               SizedBox(height: isTablet ? 30 : 42),
-              Text('今天想做什么？', style: TextStyle(fontSize: isTablet ? 22 : 34, fontWeight: FontWeight.w900, color: _ink)),
+              Text(
+                '今天想做什么？',
+                style: TextStyle(
+                  fontSize: isTablet ? 22 : 34,
+                  fontWeight: FontWeight.w900,
+                  color: _ink,
+                ),
+              ),
               const SizedBox(height: 18),
               GridView.count(
                 crossAxisCount: 2,
@@ -301,20 +504,60 @@ class Dashboard extends StatelessWidget {
                 crossAxisSpacing: isTablet ? 18 : 20,
                 childAspectRatio: isTablet ? 2.35 : .98,
                 children: [
-                  ActionTile(title: '自由画画', subtitle: '随心创作', icon: Icons.palette_rounded, iconColor: _orange, color: _peach, onTap: () => onOpen(StudioTab.draw)),
-                  ActionTile(title: '跟着学画', subtitle: '一步一步学', icon: Icons.menu_book_rounded, iconColor: const Color(0xFF07523E), color: _mint, onTap: () => onOpen(StudioTab.lessons)),
-                  ActionTile(title: '我的作品集', subtitle: '你的画作', icon: Icons.photo_library_rounded, iconColor: const Color(0xFF6E3D00), color: _butter, onTap: () => onOpen(StudioTab.gallery)),
-                  ActionTile(title: '动画故事', subtitle: '让画动起来', icon: Icons.auto_awesome_rounded, iconColor: const Color(0xFF5B285F), color: _rose, onTap: () => onOpen(StudioTab.animation)),
+                  ActionTile(
+                    title: '自由画画',
+                    subtitle: '随心创作',
+                    icon: Icons.palette_rounded,
+                    iconColor: _orange,
+                    color: _peach,
+                    onTap: () => onOpen(StudioTab.draw),
+                  ),
+                  ActionTile(
+                    title: '跟着学画',
+                    subtitle: '一步一步学',
+                    icon: Icons.menu_book_rounded,
+                    iconColor: const Color(0xFF07523E),
+                    color: _mint,
+                    onTap: () => onOpen(StudioTab.lessons),
+                  ),
+                  ActionTile(
+                    title: '我的作品集',
+                    subtitle: '你的画作',
+                    icon: Icons.photo_library_rounded,
+                    iconColor: const Color(0xFF6E3D00),
+                    color: _butter,
+                    onTap: () => onOpen(StudioTab.gallery),
+                  ),
+                  ActionTile(
+                    title: '动画故事',
+                    subtitle: '让画动起来',
+                    icon: Icons.auto_awesome_rounded,
+                    iconColor: const Color(0xFF5B285F),
+                    color: _rose,
+                    onTap: () => onOpen(StudioTab.animation),
+                  ),
                 ],
               ),
               SizedBox(height: isTablet ? 32 : 34),
               Row(
                 children: [
-                  Text('最近画的', style: TextStyle(fontSize: isTablet ? 21 : 32, fontWeight: FontWeight.w900)),
+                  Text(
+                    '最近画的',
+                    style: TextStyle(
+                      fontSize: isTablet ? 21 : 32,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => onOpen(StudioTab.gallery),
-                    child: const Text('查看全部', style: TextStyle(color: _orange, fontWeight: FontWeight.w900)),
+                    child: const Text(
+                      '查看全部',
+                      style: TextStyle(
+                        color: _orange,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -324,8 +567,10 @@ class Dashboard extends StatelessWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: sketches.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 16),
-                  itemBuilder: (context, index) => RecentCard(sketch: sketches[index], compact: isTablet),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 16),
+                  itemBuilder: (context, index) =>
+                      RecentCard(sketch: sketches[index], compact: isTablet),
                 ),
               ),
             ],
@@ -348,16 +593,34 @@ class HeroGreeting extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(44),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .10), blurRadius: 28, offset: const Offset(0, 14))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .10),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Stack(
             clipBehavior: Clip.none,
             children: [
-              const CircleAvatar(radius: 44, backgroundColor: Color(0xFFFFDD78), child: Text('🦊', style: TextStyle(fontSize: 38))),
-              Positioned(right: -4, top: -8, child: _Dot(color: const Color(0xFFFFDD78), size: 16)),
-              Positioned(left: 10, bottom: -8, child: _Dot(color: const Color(0xFFE6B4EF), size: 14)),
+              const CircleAvatar(
+                radius: 44,
+                backgroundColor: Color(0xFFFFDD78),
+                child: Text('🦊', style: TextStyle(fontSize: 38)),
+              ),
+              Positioned(
+                right: -4,
+                top: -8,
+                child: _Dot(color: const Color(0xFFFFDD78), size: 16),
+              ),
+              Positioned(
+                left: 10,
+                bottom: -8,
+                child: _Dot(color: const Color(0xFFE6B4EF), size: 14),
+              ),
             ],
           ),
           const SizedBox(width: 18),
@@ -365,20 +628,45 @@ class HeroGreeting extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('你好，', style: TextStyle(color: _muted, fontSize: 18, fontWeight: FontWeight.w900)),
-                Text('米娅!', style: TextStyle(fontSize: 34, height: 1.05, fontWeight: FontWeight.w900, color: _ink)),
+                Text(
+                  '你好，',
+                  style: TextStyle(
+                    color: _muted,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '米娅!',
+                  style: TextStyle(
+                    fontSize: 34,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    color: _ink,
+                  ),
+                ),
               ],
             ),
           ),
           FilledButton.tonalIcon(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFF2E9DE), foregroundColor: _ink, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFF2E9DE),
+              foregroundColor: _ink,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            ),
             onPressed: () {},
             icon: const Icon(Icons.translate_rounded),
-            label: const Text('EN', style: TextStyle(fontWeight: FontWeight.w900)),
+            label: const Text(
+              'EN',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
           ),
           const SizedBox(width: 12),
           IconButton.filledTonal(
-            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF2E9DE), foregroundColor: _brown),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF2E9DE),
+              foregroundColor: _brown,
+            ),
             onPressed: onParent,
             icon: const Icon(Icons.verified_user_outlined),
           ),
@@ -395,11 +683,23 @@ class _Dot extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(width: size, height: size, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 }
 
 class ActionTile extends StatelessWidget {
-  const ActionTile({super.key, required this.title, required this.subtitle, required this.icon, required this.iconColor, required this.color, required this.onTap});
+  const ActionTile({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconColor,
+    required this.color,
+    required this.onTap,
+  });
 
   final String title;
   final String subtitle;
@@ -420,19 +720,43 @@ class ActionTile extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(36),
-            boxShadow: [BoxShadow(color: const Color(0xFF6E5A45).withValues(alpha: .18), blurRadius: 0, offset: const Offset(0, 8))],
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6E5A45).withValues(alpha: .18),
+                blurRadius: 0,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              CircleAvatar(radius: 31, backgroundColor: Colors.white, child: Icon(icon, color: iconColor, size: 32)),
+              CircleAvatar(
+                radius: 31,
+                backgroundColor: Colors.white,
+                child: Icon(icon, color: iconColor, size: 32),
+              ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: _ink)),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w900,
+                      color: _ink,
+                    ),
+                  ),
                   const SizedBox(height: 5),
-                  Text(subtitle, style: const TextStyle(fontSize: 17, color: _muted, fontWeight: FontWeight.w800)),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      color: _muted,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -461,6 +785,9 @@ class GalleryArtwork {
     this.pngBytes,
     this.isFavorite = false,
     this.isUserCreated = false,
+    this.createdAt,
+    this.source = 'sample',
+    this.lessonId,
   });
 
   final String id;
@@ -471,6 +798,9 @@ class GalleryArtwork {
   final Uint8List? pngBytes;
   final bool isFavorite;
   final bool isUserCreated;
+  final DateTime? createdAt;
+  final String source;
+  final String? lessonId;
 
   GalleryArtwork copyWith({String? title, bool? isFavorite}) {
     return GalleryArtwork(
@@ -482,6 +812,9 @@ class GalleryArtwork {
       pngBytes: pngBytes,
       isFavorite: isFavorite ?? this.isFavorite,
       isUserCreated: isUserCreated,
+      createdAt: createdAt,
+      source: source,
+      lessonId: lessonId,
     );
   }
 }
@@ -500,14 +833,33 @@ class RecentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(34),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 18, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .08),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: CustomPaint(painter: SketchPainter(sketch.kind), child: const SizedBox.expand())),
+          Expanded(
+            child: CustomPaint(
+              painter: SketchPainter(sketch.kind),
+              child: const SizedBox.expand(),
+            ),
+          ),
           const SizedBox(height: 10),
-          Text(sketch.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: compact ? 14 : 23, fontWeight: FontWeight.w900)),
+          Text(
+            sketch.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 14 : 23,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );
@@ -531,17 +883,38 @@ class SketchPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round;
         for (var i = 0; i < 8; i++) {
           final a = i * math.pi / 4;
-          canvas.drawLine(c + Offset(math.cos(a), math.sin(a)) * size.shortestSide * .36, c + Offset(math.cos(a), math.sin(a)) * size.shortestSide * .48, ray);
+          canvas.drawLine(
+            c + Offset(math.cos(a), math.sin(a)) * size.shortestSide * .36,
+            c + Offset(math.cos(a), math.sin(a)) * size.shortestSide * .48,
+            ray,
+          );
         }
       case SketchKind.house:
-        canvas.drawRect(Rect.fromCenter(center: c + const Offset(0, 18), width: size.width * .42, height: size.height * .36), Paint()..color = const Color(0xFF7ED3CE));
+        canvas.drawRect(
+          Rect.fromCenter(
+            center: c + const Offset(0, 18),
+            width: size.width * .42,
+            height: size.height * .36,
+          ),
+          Paint()..color = const Color(0xFF7ED3CE),
+        );
         final roof = Path()
           ..moveTo(c.dx - size.width * .28, c.dy)
           ..lineTo(c.dx, c.dy - size.height * .28)
           ..lineTo(c.dx + size.width * .28, c.dy)
           ..close();
         canvas.drawPath(roof, Paint()..color = const Color(0xFF56B5E8));
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: c + Offset(0, size.height * .2), width: 34, height: 58), const Radius.circular(8)), Paint()..color = Colors.white);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: c + Offset(0, size.height * .2),
+              width: 34,
+              height: 58,
+            ),
+            const Radius.circular(8),
+          ),
+          Paint()..color = Colors.white,
+        );
       case SketchKind.cat:
         final p = Paint()..color = const Color(0xFFFF8D86);
         canvas.drawCircle(c, size.shortestSide * .25, p);
@@ -559,29 +932,72 @@ class SketchPainter extends CustomPainter {
         canvas.drawPath(rightEar, p);
         canvas.drawCircle(c + const Offset(-20, -4), 5, Paint()..color = _ink);
         canvas.drawCircle(c + const Offset(20, -4), 5, Paint()..color = _ink);
-        canvas.drawArc(Rect.fromCenter(center: c + const Offset(0, 16), width: 42, height: 24), 0, math.pi, false, Paint()..color = _ink..strokeWidth = 4..style = PaintingStyle.stroke);
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: c + const Offset(0, 16),
+            width: 42,
+            height: 24,
+          ),
+          0,
+          math.pi,
+          false,
+          Paint()
+            ..color = _ink
+            ..strokeWidth = 4
+            ..style = PaintingStyle.stroke,
+        );
       case SketchKind.rocket:
         final body = Path()
           ..moveTo(c.dx, c.dy - size.height * .34)
           ..quadraticBezierTo(c.dx + 36, c.dy - 4, c.dx + 18, c.dy + 54)
           ..lineTo(c.dx - 18, c.dy + 54)
-          ..quadraticBezierTo(c.dx - 36, c.dy - 4, c.dx, c.dy - size.height * .34)
+          ..quadraticBezierTo(
+            c.dx - 36,
+            c.dy - 4,
+            c.dx,
+            c.dy - size.height * .34,
+          )
           ..close();
         canvas.drawPath(body, Paint()..color = const Color(0xFF82A8FF));
-        canvas.drawCircle(c + const Offset(0, -22), 13, Paint()..color = Colors.white);
-        canvas.drawPath(Path()..moveTo(c.dx - 18, c.dy + 42)..lineTo(c.dx - 52, c.dy + 72)..lineTo(c.dx - 8, c.dy + 60)..close(), Paint()..color = const Color(0xFF8D8AF9));
-        canvas.drawPath(Path()..moveTo(c.dx + 18, c.dy + 42)..lineTo(c.dx + 52, c.dy + 72)..lineTo(c.dx + 8, c.dy + 60)..close(), Paint()..color = const Color(0xFF8D8AF9));
+        canvas.drawCircle(
+          c + const Offset(0, -22),
+          13,
+          Paint()..color = Colors.white,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(c.dx - 18, c.dy + 42)
+            ..lineTo(c.dx - 52, c.dy + 72)
+            ..lineTo(c.dx - 8, c.dy + 60)
+            ..close(),
+          Paint()..color = const Color(0xFF8D8AF9),
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(c.dx + 18, c.dy + 42)
+            ..lineTo(c.dx + 52, c.dy + 72)
+            ..lineTo(c.dx + 8, c.dy + 60)
+            ..close(),
+          Paint()..color = const Color(0xFF8D8AF9),
+        );
     }
   }
 
   @override
-  bool shouldRepaint(covariant SketchPainter oldDelegate) => oldDelegate.kind != kind;
+  bool shouldRepaint(covariant SketchPainter oldDelegate) =>
+      oldDelegate.kind != kind;
 }
 
 class DrawPage extends StatefulWidget {
-  const DrawPage({super.key, required this.onBack, required this.onSaved});
+  const DrawPage({
+    super.key,
+    required this.onBack,
+    required this.onSaved,
+    required this.store,
+  });
   final VoidCallback onBack;
-  final ValueChanged<Uint8List> onSaved;
+  final Future<void> Function(Uint8List) onSaved;
+  final ArtistStore store;
 
   @override
   State<DrawPage> createState() => _DrawPageState();
@@ -595,9 +1011,65 @@ class _DrawPageState extends State<DrawPage> {
   DrawingTool _tool = DrawingTool.crayon;
   Color _color = _orange;
   double _width = 10;
+  Timer? _autosaveTimer;
+  bool _draftRestored = false;
 
   bool get _canUndo => _strokes.isNotEmpty;
   bool get _canRedo => _redoStack.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreDraft();
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    if (_strokes.isNotEmpty) _ignoreStorageError(_persistDraft());
+    super.dispose();
+  }
+
+  Future<void> _restoreDraft() async {
+    final draft = await widget.store.loadDraft('free-drawing');
+    if (!mounted) return;
+    final restored = _strokesFromDraft(draft);
+    setState(() {
+      _strokes
+        ..clear()
+        ..addAll(restored);
+      _draftRestored = restored.isNotEmpty;
+    });
+    if (_draftRestored) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已恢复上次自动保存的草稿'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 700), _persistDraft);
+  }
+
+  Future<void> _persistDraft() async {
+    try {
+      if (_strokes.isEmpty) {
+        await widget.store.deleteDraft('free-drawing');
+        return;
+      }
+      await widget.store.saveDraft('free-drawing', _draftFromStrokes(_strokes));
+    } catch (_) {
+      // A failed autosave must never interrupt drawing.
+    }
+  }
 
   void _startStroke(PointerDownEvent event) {
     final stroke = DrawingStroke(
@@ -615,32 +1087,40 @@ class _DrawPageState extends State<DrawPage> {
 
   void _extendStroke(PointerMoveEvent event) {
     setState(() {
-      _activeStroke?.points.add(DrawingPoint(event.localPosition, _pressure(event)));
+      _activeStroke?.points.add(
+        DrawingPoint(event.localPosition, _pressure(event)),
+      );
     });
   }
 
   void _endStroke(PointerEvent event) {
     _activeStroke = null;
+    _scheduleAutosave();
   }
 
   double _pressure(PointerEvent event) {
-    if (event.kind != ui.PointerDeviceKind.stylus && event.kind != ui.PointerDeviceKind.invertedStylus) {
+    if (event.kind != ui.PointerDeviceKind.stylus &&
+        event.kind != ui.PointerDeviceKind.invertedStylus) {
       return 1;
     }
     if (event.pressureMax <= event.pressureMin) {
       return 1;
     }
-    return ((event.pressure - event.pressureMin) / (event.pressureMax - event.pressureMin)).clamp(.35, 1.4);
+    return ((event.pressure - event.pressureMin) /
+            (event.pressureMax - event.pressureMin))
+        .clamp(.35, 1.4);
   }
 
   void _undo() {
     if (!_canUndo) return;
     setState(() => _redoStack.add(_strokes.removeLast()));
+    _scheduleAutosave();
   }
 
   void _redo() {
     if (!_canRedo) return;
     setState(() => _strokes.add(_redoStack.removeLast()));
+    _scheduleAutosave();
   }
 
   void _clear() {
@@ -651,20 +1131,36 @@ class _DrawPageState extends State<DrawPage> {
         ..addAll(_strokes);
       _strokes.clear();
     });
+    _scheduleAutosave();
   }
 
   Future<void> _savePreview() async {
-    final boundary = _canvasKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    final boundary =
+        _canvasKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return;
     final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (!mounted) return;
     if (data == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保存失败，请再试一次')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('保存失败，请再试一次')));
       return;
     }
-    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-    widget.onSaved(bytes);
+    final bytes = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
+    try {
+      await widget.onSaved(bytes);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('保存失败，请检查设备存储空间')));
+      return;
+    }
+    if (!mounted) return;
     final sizeKb = (data.lengthInBytes / 1024).round();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -676,7 +1172,14 @@ class _DrawPageState extends State<DrawPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [_orange, const Color(0xFFFF9D00), const Color(0xFF20B26B), const Color(0xFF45A7E8), const Color(0xFF8C63E8), const Color(0xFF3A1D10)];
+    final colors = [
+      _orange,
+      const Color(0xFFFF9D00),
+      const Color(0xFF20B26B),
+      const Color(0xFF45A7E8),
+      const Color(0xFF8C63E8),
+      const Color(0xFF3A1D10),
+    ];
     return AppPage(
       title: '自由画画',
       onBack: widget.onBack,
@@ -732,10 +1235,7 @@ class _DrawPageState extends State<DrawPage> {
             children: [
               Expanded(child: canvas),
               SizedBox(width: isWide ? 16 : 0, height: isWide ? 0 : 14),
-              SizedBox(
-                width: isWide ? 178 : double.infinity,
-                child: tools,
-              ),
+              SizedBox(width: isWide ? 178 : double.infinity, child: tools),
             ],
           );
         },
@@ -765,6 +1265,75 @@ class DrawingStroke {
   final Color color;
   final double baseWidth;
   final List<DrawingPoint> points;
+}
+
+Map<String, Object?> _draftFromStrokes(
+  List<DrawingStroke> strokes, {
+  int? stepIndex,
+}) => {
+  'version': 1,
+  'stepIndex': ?stepIndex,
+  'updatedAt': DateTime.now().toUtc().toIso8601String(),
+  'strokes': [
+    for (final stroke in strokes)
+      {
+        'tool': stroke.tool.name,
+        'color': stroke.color.toARGB32(),
+        'width': stroke.baseWidth,
+        'points': [
+          for (final point in stroke.points)
+            [point.offset.dx, point.offset.dy, point.pressure],
+        ],
+      },
+  ],
+};
+
+List<DrawingStroke> _strokesFromDraft(Map<String, Object?>? draft) {
+  if (draft == null) return [];
+  try {
+    return [
+      for (final item in draft['strokes'] as List<dynamic>)
+        DrawingStroke(
+          tool: DrawingTool.values.byName(
+            (item as Map<String, dynamic>)['tool'] as String,
+          ),
+          color: Color((item['color'] as num).toInt()),
+          baseWidth: (item['width'] as num).toDouble(),
+          points: [
+            for (final point in item['points'] as List<dynamic>)
+              DrawingPoint(
+                Offset(
+                  (point[0] as num).toDouble(),
+                  (point[1] as num).toDouble(),
+                ),
+                (point[2] as num).toDouble(),
+              ),
+          ],
+        ),
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+Future<Uint8List> _renderDrawingPng(
+  List<DrawingStroke> strokes,
+  Size size,
+) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.scale(2);
+  NativeCanvasPainter(strokes: strokes).paint(canvas, size);
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(
+    math.max(1, (size.width * 2).round()),
+    math.max(1, (size.height * 2).round()),
+  );
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  picture.dispose();
+  if (data == null) throw StateError('无法生成作品图片');
+  return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 }
 
 class DrawingToolPanel extends StatelessWidget {
@@ -809,7 +1378,13 @@ class DrawingToolPanel extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .07), blurRadius: 18, offset: const Offset(0, 8))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .07),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Flex(
             direction: horizontal ? Axis.horizontal : Axis.vertical,
@@ -820,14 +1395,54 @@ class DrawingToolPanel extends StatelessWidget {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  ToolChip(icon: Icons.edit_rounded, selected: tool == DrawingTool.crayon, onTap: () => onTool(DrawingTool.crayon), tooltip: '蜡笔'),
-                  ToolChip(icon: Icons.brush_rounded, selected: tool == DrawingTool.marker, onTap: () => onTool(DrawingTool.marker), tooltip: '画笔'),
-                  ToolChip(icon: Icons.auto_awesome_rounded, selected: tool == DrawingTool.glow, onTap: () => onTool(DrawingTool.glow), tooltip: '闪光笔'),
-                  ToolChip(icon: Icons.cleaning_services_rounded, selected: tool == DrawingTool.eraser, onTap: () => onTool(DrawingTool.eraser), tooltip: '橡皮'),
-                  ToolChip(icon: Icons.undo_rounded, selected: false, onTap: canUndo ? onUndo : null, tooltip: '撤销'),
-                  ToolChip(icon: Icons.redo_rounded, selected: false, onTap: canRedo ? onRedo : null, tooltip: '重做'),
-                  ToolChip(icon: Icons.delete_outline_rounded, selected: false, onTap: onClear, tooltip: '清空'),
-                  ToolChip(icon: Icons.save_rounded, selected: false, onTap: onSave, tooltip: '保存预览'),
+                  ToolChip(
+                    icon: Icons.edit_rounded,
+                    selected: tool == DrawingTool.crayon,
+                    onTap: () => onTool(DrawingTool.crayon),
+                    tooltip: '蜡笔',
+                  ),
+                  ToolChip(
+                    icon: Icons.brush_rounded,
+                    selected: tool == DrawingTool.marker,
+                    onTap: () => onTool(DrawingTool.marker),
+                    tooltip: '画笔',
+                  ),
+                  ToolChip(
+                    icon: Icons.auto_awesome_rounded,
+                    selected: tool == DrawingTool.glow,
+                    onTap: () => onTool(DrawingTool.glow),
+                    tooltip: '闪光笔',
+                  ),
+                  ToolChip(
+                    icon: Icons.cleaning_services_rounded,
+                    selected: tool == DrawingTool.eraser,
+                    onTap: () => onTool(DrawingTool.eraser),
+                    tooltip: '橡皮',
+                  ),
+                  ToolChip(
+                    icon: Icons.undo_rounded,
+                    selected: false,
+                    onTap: canUndo ? onUndo : null,
+                    tooltip: '撤销',
+                  ),
+                  ToolChip(
+                    icon: Icons.redo_rounded,
+                    selected: false,
+                    onTap: canRedo ? onRedo : null,
+                    tooltip: '重做',
+                  ),
+                  ToolChip(
+                    icon: Icons.delete_outline_rounded,
+                    selected: false,
+                    onTap: onClear,
+                    tooltip: '清空',
+                  ),
+                  ToolChip(
+                    icon: Icons.save_rounded,
+                    selected: false,
+                    onTap: onSave,
+                    tooltip: '保存预览',
+                  ),
                 ],
               ),
               SizedBox(width: horizontal ? 14 : 0, height: horizontal ? 0 : 12),
@@ -846,7 +1461,12 @@ class DrawingToolPanel extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: c,
                           shape: BoxShape.circle,
-                          border: Border.all(color: color == c && tool != DrawingTool.eraser ? _ink : Colors.white, width: 3),
+                          border: Border.all(
+                            color: color == c && tool != DrawingTool.eraser
+                                ? _ink
+                                : Colors.white,
+                            width: 3,
+                          ),
                         ),
                       ),
                     ),
@@ -893,7 +1513,9 @@ class ToolChip extends StatelessWidget {
       isSelected: selected,
       onPressed: onTap,
       style: IconButton.styleFrom(
-        backgroundColor: selected ? const Color(0xFFFFE3DC) : const Color(0xFFF7F0E6),
+        backgroundColor: selected
+            ? const Color(0xFFFFE3DC)
+            : const Color(0xFFF7F0E6),
         foregroundColor: selected ? _orange : _brown,
         disabledBackgroundColor: const Color(0xFFF1E9DE),
         disabledForegroundColor: _brown.withValues(alpha: .35),
@@ -937,15 +1559,31 @@ class NativeCanvasPainter extends CustomPainter {
 
       paint
         ..strokeWidth = stroke.baseWidth
-        ..color = stroke.tool == DrawingTool.marker ? stroke.color.withValues(alpha: .72) : stroke.color;
-      _drawStroke(canvas, stroke, paint, pressureAware: stroke.tool != DrawingTool.eraser);
+        ..color = stroke.tool == DrawingTool.marker
+            ? stroke.color.withValues(alpha: .72)
+            : stroke.color;
+      _drawStroke(
+        canvas,
+        stroke,
+        paint,
+        pressureAware: stroke.tool != DrawingTool.eraser,
+      );
     }
   }
 
-  void _drawStroke(Canvas canvas, DrawingStroke stroke, Paint paint, {required bool pressureAware}) {
+  void _drawStroke(
+    Canvas canvas,
+    DrawingStroke stroke,
+    Paint paint, {
+    required bool pressureAware,
+  }) {
     if (stroke.points.length == 1) {
       final point = stroke.points.first;
-      canvas.drawCircle(point.offset, paint.strokeWidth * point.pressure / 2, paint..style = PaintingStyle.fill);
+      canvas.drawCircle(
+        point.offset,
+        paint.strokeWidth * point.pressure / 2,
+        paint..style = PaintingStyle.fill,
+      );
       paint.style = PaintingStyle.stroke;
       return;
     }
@@ -953,7 +1591,9 @@ class NativeCanvasPainter extends CustomPainter {
     for (var i = 0; i < stroke.points.length - 1; i++) {
       final a = stroke.points[i];
       final b = stroke.points[i + 1];
-      paint.strokeWidth = pressureAware ? stroke.baseWidth * ((a.pressure + b.pressure) / 2) : stroke.baseWidth;
+      paint.strokeWidth = pressureAware
+          ? stroke.baseWidth * ((a.pressure + b.pressure) / 2)
+          : stroke.baseWidth;
       canvas.drawLine(a.offset, b.offset, paint);
     }
   }
@@ -1073,8 +1713,20 @@ const _drawingLessons = [
 ];
 
 class LessonsPage extends StatefulWidget {
-  const LessonsPage({super.key, required this.onBack});
+  const LessonsPage({
+    super.key,
+    required this.onBack,
+    required this.progress,
+    required this.onProgress,
+    required this.onArtworkSaved,
+    required this.store,
+  });
   final VoidCallback onBack;
+  final Map<String, int> progress;
+  final void Function(String lessonId, int completedSteps) onProgress;
+  final Future<void> Function(DrawingLesson lesson, Uint8List pngBytes)
+  onArtworkSaved;
+  final ArtistStore store;
 
   @override
   State<LessonsPage> createState() => _LessonsPageState();
@@ -1083,14 +1735,15 @@ class LessonsPage extends StatefulWidget {
 class _LessonsPageState extends State<LessonsPage> {
   String _category = '全部';
   DrawingLesson? _activeLesson;
-  final Map<String, int> _progress = {};
 
-  int _progressFor(DrawingLesson lesson) => math.min(_progress[lesson.id] ?? 0, lesson.steps.length);
+  int _progressFor(DrawingLesson lesson) =>
+      math.min(widget.progress[lesson.id] ?? 0, lesson.steps.length);
 
-  void _openLesson(DrawingLesson lesson) => setState(() => _activeLesson = lesson);
+  void _openLesson(DrawingLesson lesson) =>
+      setState(() => _activeLesson = lesson);
 
   void _updateProgress(DrawingLesson lesson, int completedSteps) {
-    setState(() => _progress[lesson.id] = completedSteps.clamp(0, lesson.steps.length));
+    widget.onProgress(lesson.id, completedSteps.clamp(0, lesson.steps.length));
   }
 
   @override
@@ -1098,20 +1751,29 @@ class _LessonsPageState extends State<LessonsPage> {
     final lesson = _activeLesson;
     return AppPage(
       title: lesson == null ? '跟着学画' : '跟着学画 · ${lesson.title}',
-      onBack: lesson == null ? widget.onBack : () => setState(() => _activeLesson = null),
+      onBack: lesson == null
+          ? widget.onBack
+          : () => setState(() => _activeLesson = null),
       child: lesson == null
           ? LessonCatalog(
               category: _category,
-              progress: _progress,
+              progress: widget.progress,
               onCategory: (category) => setState(() => _category = category),
               onOpen: _openLesson,
             )
           : GuidedLessonWorkspace(
               key: ValueKey(lesson.id),
               lesson: lesson,
-              initialStep: math.min(_progressFor(lesson), lesson.steps.length - 1),
-              onProgress: (completedSteps) => _updateProgress(lesson, completedSteps),
+              initialStep: math.min(
+                _progressFor(lesson),
+                lesson.steps.length - 1,
+              ),
+              onProgress: (completedSteps) =>
+                  _updateProgress(lesson, completedSteps),
               onFinish: () => setState(() => _activeLesson = null),
+              onArtworkSaved: (pngBytes) =>
+                  widget.onArtworkSaved(lesson, pngBytes),
+              store: widget.store,
             ),
     );
   }
@@ -1131,17 +1793,24 @@ class LessonCatalog extends StatelessWidget {
   final ValueChanged<String> onCategory;
   final ValueChanged<DrawingLesson> onOpen;
 
-  int _progressFor(DrawingLesson lesson) => math.min(progress[lesson.id] ?? 0, lesson.steps.length);
+  int _progressFor(DrawingLesson lesson) =>
+      math.min(progress[lesson.id] ?? 0, lesson.steps.length);
 
   @override
   Widget build(BuildContext context) {
     const categories = ['全部', '可爱动物', '恐龙世界', '交通工具', '节日快乐'];
     final visibleLessons = category == '全部'
         ? _drawingLessons
-        : _drawingLessons.where((lesson) => lesson.category == category).toList();
-    final completedCount = _drawingLessons.where((lesson) => _progressFor(lesson) == lesson.steps.length).length;
+        : _drawingLessons
+              .where((lesson) => lesson.category == category)
+              .toList();
+    final completedCount = _drawingLessons
+        .where((lesson) => _progressFor(lesson) == lesson.steps.length)
+        .length;
     final continueLesson = _drawingLessons.firstWhere(
-      (lesson) => _progressFor(lesson) > 0 && _progressFor(lesson) < lesson.steps.length,
+      (lesson) =>
+          _progressFor(lesson) > 0 &&
+          _progressFor(lesson) < lesson.steps.length,
       orElse: () => _drawingLessons.first,
     );
 
@@ -1168,7 +1837,10 @@ class LessonCatalog extends StatelessWidget {
                       selected: category == item,
                       selectedColor: _mint,
                       side: BorderSide.none,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.w900, color: _ink),
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: _ink,
+                      ),
                       onSelected: (_) => onCategory(item),
                     ),
                     const SizedBox(width: 9),
@@ -1179,9 +1851,18 @@ class LessonCatalog extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                const Text('挑一幅开始吧', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const Text(
+                  '挑一幅开始吧',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
                 const Spacer(),
-                Text('${visibleLessons.length} 节课', style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+                Text(
+                  '${visibleLessons.length} 节课',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1233,7 +1914,13 @@ class LessonWelcomeBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: _mint,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: _brown.withValues(alpha: .12), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: _brown.withValues(alpha: .12),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -1247,28 +1934,69 @@ class LessonWelcomeBanner extends StatelessWidget {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: .78), borderRadius: BorderRadius.circular(99)),
-                          child: Text('已完成 $completedLessons 幅', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .78),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            '已完成 $completedLessons 幅',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: _ink,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 8),
-                        const Text('今天也要开心画画', style: TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+                        const Text(
+                          '今天也要开心画画',
+                          style: TextStyle(
+                            color: _muted,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(hasProgress ? '继续画「${lesson.title}」' : '从一笔开始，画出大世界', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: _ink)),
+                    Text(
+                      hasProgress ? '继续画「${lesson.title}」' : '从一笔开始，画出大世界',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: _ink,
+                      ),
+                    ),
                     const SizedBox(height: 5),
                     Text(
-                      hasProgress ? '已经完成 $completedSteps / ${lesson.steps.length} 步，接着画吧！' : '挑一幅喜欢的作品，我们一步一步来。',
-                      style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+                      hasProgress
+                          ? '已经完成 $completedSteps / ${lesson.steps.length} 步，接着画吧！'
+                          : '挑一幅喜欢的作品，我们一步一步来。',
+                      style: const TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       key: const ValueKey('lesson-continue'),
-                      style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _orange,
+                        foregroundColor: Colors.white,
+                      ),
                       onPressed: onTap,
-                      icon: Icon(hasProgress ? Icons.play_arrow_rounded : Icons.auto_awesome_rounded),
-                      label: Text(hasProgress ? '继续第 ${completedSteps + 1} 步' : '开始第一课', style: const TextStyle(fontWeight: FontWeight.w900)),
+                      icon: Icon(
+                        hasProgress
+                            ? Icons.play_arrow_rounded
+                            : Icons.auto_awesome_rounded,
+                      ),
+                      label: Text(
+                        hasProgress ? '继续第 ${completedSteps + 1} 步' : '开始第一课',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ],
                 ),
@@ -1278,9 +2006,17 @@ class LessonWelcomeBanner extends StatelessWidget {
                 Container(
                   width: 158,
                   height: 128,
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .72), borderRadius: BorderRadius.circular(24)),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .72),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
                   child: CustomPaint(
-                    painter: LessonGuidePainter(art: lesson.art, visibleSteps: lesson.steps.length, accent: lesson.color, preview: true),
+                    painter: LessonGuidePainter(
+                      art: lesson.art,
+                      visibleSteps: lesson.steps.length,
+                      accent: lesson.color,
+                      preview: true,
+                    ),
                     child: const SizedBox.expand(),
                   ),
                 ),
@@ -1294,7 +2030,12 @@ class LessonWelcomeBanner extends StatelessWidget {
 }
 
 class LessonCourseCard extends StatelessWidget {
-  const LessonCourseCard({super.key, required this.lesson, required this.completedSteps, required this.onTap});
+  const LessonCourseCard({
+    super.key,
+    required this.lesson,
+    required this.completedSteps,
+    required this.onTap,
+  });
 
   final DrawingLesson lesson;
   final int completedSteps;
@@ -1306,8 +2047,8 @@ class LessonCourseCard extends StatelessWidget {
     final status = completedSteps == 0
         ? '未开始'
         : completedSteps == lesson.steps.length
-            ? '已完成'
-            : '$completedSteps / ${lesson.steps.length} 步';
+        ? '已完成'
+        : '$completedSteps / ${lesson.steps.length} 步';
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(26),
@@ -1322,9 +2063,17 @@ class LessonCourseCard extends StatelessWidget {
               Container(
                 width: 126,
                 height: double.infinity,
-                decoration: BoxDecoration(color: lesson.color, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: lesson.color,
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: CustomPaint(
-                  painter: LessonGuidePainter(art: lesson.art, visibleSteps: lesson.steps.length, accent: lesson.color, preview: true),
+                  painter: LessonGuidePainter(
+                    art: lesson.art,
+                    visibleSteps: lesson.steps.length,
+                    accent: lesson.color,
+                    preview: true,
+                  ),
                   child: const SizedBox.expand(),
                 ),
               ),
@@ -1335,29 +2084,89 @@ class LessonCourseCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: Text(lesson.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
-                        const Icon(Icons.arrow_forward_rounded, color: _orange, size: 22),
+                        Expanded(
+                          child: Text(
+                            lesson.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          color: _orange,
+                          size: 22,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text(lesson.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 13, height: 1.25, fontWeight: FontWeight.w700)),
+                    Text(
+                      lesson.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 13,
+                        height: 1.25,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const Spacer(),
                     Row(
                       children: [
-                        const Icon(Icons.signal_cellular_alt_rounded, size: 15, color: _brown),
+                        const Icon(
+                          Icons.signal_cellular_alt_rounded,
+                          size: 15,
+                          color: _brown,
+                        ),
                         const SizedBox(width: 4),
-                        const Text('入门', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _muted)),
+                        const Text(
+                          '入门',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _muted,
+                          ),
+                        ),
                         const SizedBox(width: 10),
-                        const Icon(Icons.schedule_rounded, size: 15, color: _brown),
+                        const Icon(
+                          Icons.schedule_rounded,
+                          size: 15,
+                          color: _brown,
+                        ),
                         const SizedBox(width: 4),
-                        Expanded(child: Text(lesson.duration, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _muted))),
-                        Text(status, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _orange)),
+                        Expanded(
+                          child: Text(
+                            lesson.duration,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _muted,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          status,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: _orange,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 7),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(value: progress, minHeight: 6, backgroundColor: const Color(0xFFF3E9DC), color: _orange),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: const Color(0xFFF3E9DC),
+                        color: _orange,
+                      ),
                     ),
                   ],
                 ),
@@ -1377,18 +2186,23 @@ class GuidedLessonWorkspace extends StatefulWidget {
     required this.initialStep,
     required this.onProgress,
     required this.onFinish,
+    required this.onArtworkSaved,
+    required this.store,
   });
 
   final DrawingLesson lesson;
   final int initialStep;
   final ValueChanged<int> onProgress;
   final VoidCallback onFinish;
+  final Future<void> Function(Uint8List pngBytes) onArtworkSaved;
+  final ArtistStore store;
 
   @override
   State<GuidedLessonWorkspace> createState() => _GuidedLessonWorkspaceState();
 }
 
 class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
+  final _canvasKey = GlobalKey();
   final _strokes = <DrawingStroke>[];
   final _redoStack = <DrawingStroke>[];
   DrawingStroke? _activeStroke;
@@ -1398,6 +2212,9 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   Color _color = _orange;
   double _width = 10;
   bool _showGuide = true;
+  Timer? _autosaveTimer;
+  bool _isCompleting = false;
+  bool _suppressDraftSave = false;
 
   bool get _canUndo => _strokes.isNotEmpty;
   bool get _canRedo => _redoStack.isNotEmpty;
@@ -1406,12 +2223,64 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   void initState() {
     super.initState();
     _stepIndex = widget.initialStep;
+    _restoreDraft();
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    if (_strokes.isNotEmpty && !_suppressDraftSave) {
+      _ignoreStorageError(_persistDraft());
+    }
+    super.dispose();
+  }
+
+  String get _draftKey => 'lesson-${widget.lesson.id}';
+
+  Future<void> _restoreDraft() async {
+    final draft = await widget.store.loadDraft(_draftKey);
+    if (!mounted || draft == null) return;
+    final strokes = _strokesFromDraft(draft);
+    final savedStep = (draft['stepIndex'] as num?)?.toInt();
+    setState(() {
+      _strokes
+        ..clear()
+        ..addAll(strokes);
+      if (savedStep != null) {
+        _stepIndex = savedStep.clamp(0, widget.lesson.steps.length - 1);
+      }
+    });
+  }
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 700), _persistDraft);
+  }
+
+  Future<void> _persistDraft() async {
+    try {
+      if (_strokes.isEmpty && _stepIndex == 0) {
+        await widget.store.deleteDraft(_draftKey);
+        return;
+      }
+      await widget.store.saveDraft(
+        _draftKey,
+        _draftFromStrokes(_strokes, stepIndex: _stepIndex),
+      );
+    } catch (_) {
+      // A failed autosave must never interrupt the lesson.
+    }
   }
 
   double _pressure(PointerEvent event) {
-    if (event.kind != ui.PointerDeviceKind.stylus && event.kind != ui.PointerDeviceKind.invertedStylus) return 1;
+    if (event.kind != ui.PointerDeviceKind.stylus &&
+        event.kind != ui.PointerDeviceKind.invertedStylus) {
+      return 1;
+    }
     if (event.pressureMax <= event.pressureMin) return 1;
-    return ((event.pressure - event.pressureMin) / (event.pressureMax - event.pressureMin)).clamp(.35, 1.4);
+    return ((event.pressure - event.pressureMin) /
+            (event.pressureMax - event.pressureMin))
+        .clamp(.35, 1.4);
   }
 
   void _startStroke(PointerDownEvent event) {
@@ -1432,23 +2301,30 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
 
   void _extendStroke(PointerMoveEvent event) {
     if (event.pointer != _activePointer) return;
-    setState(() => _activeStroke?.points.add(DrawingPoint(event.localPosition, _pressure(event))));
+    setState(
+      () => _activeStroke?.points.add(
+        DrawingPoint(event.localPosition, _pressure(event)),
+      ),
+    );
   }
 
   void _endStroke(PointerEvent event) {
     if (event.pointer != _activePointer) return;
     _activePointer = null;
     _activeStroke = null;
+    _scheduleAutosave();
   }
 
   void _undo() {
     if (!_canUndo) return;
     setState(() => _redoStack.add(_strokes.removeLast()));
+    _scheduleAutosave();
   }
 
   void _redo() {
     if (!_canRedo) return;
     setState(() => _strokes.add(_redoStack.removeLast()));
+    _scheduleAutosave();
   }
 
   Future<void> _confirmClear() async {
@@ -1459,8 +2335,14 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
         title: const Text('清空这张画吗？'),
         content: const Text('清空后还可以用“撤销”找回来。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('继续画')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('清空')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('继续画'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清空'),
+          ),
         ],
       ),
     );
@@ -1471,34 +2353,64 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
         ..addAll(_strokes);
       _strokes.clear();
     });
+    _scheduleAutosave();
   }
 
   void _previousStep() {
     if (_stepIndex == 0) return;
     setState(() => _stepIndex--);
+    _scheduleAutosave();
   }
 
   void _nextStep() {
     if (_stepIndex < widget.lesson.steps.length - 1) {
       widget.onProgress(_stepIndex + 1);
       setState(() => _stepIndex++);
+      _scheduleAutosave();
       return;
     }
     widget.onProgress(widget.lesson.steps.length);
-    _showCompletion();
+    _completeLesson();
   }
 
-  Future<void> _showCompletion() async {
+  Future<void> _completeLesson() async {
+    if (_isCompleting) return;
+    setState(() => _isCompleting = true);
+    var saved = false;
+    try {
+      final renderObject = _canvasKey.currentContext?.findRenderObject();
+      final size = renderObject is RenderBox && renderObject.hasSize
+          ? renderObject.size
+          : const Size(720, 520);
+      final pngBytes = await _renderDrawingPng(_strokes, size);
+      await widget.onArtworkSaved(pngBytes);
+      await widget.store.deleteDraft(_draftKey);
+      _suppressDraftSave = true;
+      saved = true;
+    } catch (_) {
+      saved = false;
+    }
+    if (!mounted) return;
+    setState(() => _isCompleting = false);
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.auto_awesome_rounded, color: _orange, size: 48),
         title: const Text('画好啦！'),
-        content: const Text('每一笔都很特别，你完成了今天的绘画课程。', textAlign: TextAlign.center),
+        content: Text(
+          saved ? '每一笔都很特别，作品已经自动保存到作品集啦！' : '课程已经完成，但作品保存失败，请检查设备存储空间。',
+          textAlign: TextAlign.center,
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, 'restart'), child: const Text('再画一次')),
-          FilledButton(onPressed: () => Navigator.pop(context, 'catalog'), child: const Text('返回课程')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'restart'),
+            child: const Text('再画一次'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'catalog'),
+            child: const Text('返回课程'),
+          ),
         ],
       ),
     );
@@ -1508,8 +2420,10 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
         _stepIndex = 0;
         _strokes.clear();
         _redoStack.clear();
+        _suppressDraftSave = false;
       });
       widget.onProgress(0);
+      _ignoreStorageError(widget.store.deleteDraft(_draftKey));
     } else if (result == 'catalog') {
       widget.onFinish();
     }
@@ -1519,7 +2433,8 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sideBySide = constraints.maxWidth >= 760 && constraints.maxHeight >= 520;
+        final sideBySide =
+            constraints.maxWidth >= 760 && constraints.maxHeight >= 520;
         final canvas = _buildCanvas();
         final steps = _buildStepPanel();
         if (sideBySide) {
@@ -1533,7 +2448,10 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
         }
         return ListView(
           children: [
-            SizedBox(height: math.max(330, constraints.maxHeight * .72), child: canvas),
+            SizedBox(
+              height: math.max(330, constraints.maxHeight * .72),
+              child: canvas,
+            ),
             const SizedBox(height: 14),
             SizedBox(height: 430, child: steps),
           ],
@@ -1555,6 +2473,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       children: [
         Expanded(
           child: RepaintBoundary(
+            key: _canvasKey,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: Stack(
@@ -1586,14 +2505,34 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                     right: 12,
                     child: Container(
                       padding: const EdgeInsets.only(left: 12),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .94), borderRadius: BorderRadius.circular(99)),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .94),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.visibility_outlined, size: 18, color: _brown),
+                          const Icon(
+                            Icons.visibility_outlined,
+                            size: 18,
+                            color: _brown,
+                          ),
                           const SizedBox(width: 5),
-                          const Text('显示提示', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
-                          Switch(value: _showGuide, activeTrackColor: _mint, activeThumbColor: const Color(0xFF07523E), onChanged: (value) => setState(() => _showGuide = value)),
+                          const Text(
+                            '显示提示',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: _ink,
+                            ),
+                          ),
+                          Switch(
+                            value: _showGuide,
+                            activeTrackColor: _mint,
+                            activeThumbColor: const Color(0xFF07523E),
+                            onChanged: (value) =>
+                                setState(() => _showGuide = value),
+                          ),
                         ],
                       ),
                     ),
@@ -1608,25 +2547,49 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
           height: 62,
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                ToolChip(icon: Icons.edit_rounded, selected: _tool == DrawingTool.crayon, onTap: () => setState(() => _tool = DrawingTool.crayon), tooltip: '蜡笔'),
+                ToolChip(
+                  icon: Icons.edit_rounded,
+                  selected: _tool == DrawingTool.crayon,
+                  onTap: () => setState(() => _tool = DrawingTool.crayon),
+                  tooltip: '蜡笔',
+                ),
                 const SizedBox(width: 5),
-                ToolChip(icon: Icons.cleaning_services_rounded, selected: _tool == DrawingTool.eraser, onTap: () => setState(() => _tool = DrawingTool.eraser), tooltip: '橡皮'),
+                ToolChip(
+                  icon: Icons.cleaning_services_rounded,
+                  selected: _tool == DrawingTool.eraser,
+                  onTap: () => setState(() => _tool = DrawingTool.eraser),
+                  tooltip: '橡皮',
+                ),
                 const SizedBox(width: 5),
-                ToolChip(icon: Icons.undo_rounded, selected: false, onTap: _canUndo ? _undo : null, tooltip: '撤销'),
+                ToolChip(
+                  icon: Icons.undo_rounded,
+                  selected: false,
+                  onTap: _canUndo ? _undo : null,
+                  tooltip: '撤销',
+                ),
                 const SizedBox(width: 5),
-                ToolChip(icon: Icons.redo_rounded, selected: false, onTap: _canRedo ? _redo : null, tooltip: '重做'),
+                ToolChip(
+                  icon: Icons.redo_rounded,
+                  selected: false,
+                  onTap: _canRedo ? _redo : null,
+                  tooltip: '重做',
+                ),
                 const SizedBox(width: 10),
                 for (final item in colors) ...[
                   Tooltip(
                     message: item.$2,
                     child: Semantics(
                       button: true,
-                      selected: _color == item.$1 && _tool != DrawingTool.eraser,
+                      selected:
+                          _color == item.$1 && _tool != DrawingTool.eraser,
                       label: '选择${item.$2}',
                       child: InkWell(
                         borderRadius: BorderRadius.circular(99),
@@ -1640,7 +2603,14 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                           decoration: BoxDecoration(
                             color: item.$1,
                             shape: BoxShape.circle,
-                            border: Border.all(color: _color == item.$1 && _tool != DrawingTool.eraser ? _ink : Colors.white, width: 3),
+                            border: Border.all(
+                              color:
+                                  _color == item.$1 &&
+                                      _tool != DrawingTool.eraser
+                                  ? _ink
+                                  : Colors.white,
+                              width: 3,
+                            ),
                           ),
                         ),
                       ),
@@ -1650,9 +2620,20 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                 ],
                 SizedBox(
                   width: 120,
-                  child: Slider(value: _width, min: 4, max: 24, divisions: 10, activeColor: _color, onChanged: (value) => setState(() => _width = value)),
+                  child: Slider(
+                    value: _width,
+                    min: 4,
+                    max: 24,
+                    divisions: 10,
+                    activeColor: _color,
+                    onChanged: (value) => setState(() => _width = value),
+                  ),
                 ),
-                IconButton.filledTonal(tooltip: '清空画布', onPressed: _strokes.isEmpty ? null : _confirmClear, icon: const Icon(Icons.delete_outline_rounded)),
+                IconButton.filledTonal(
+                  tooltip: '清空画布',
+                  onPressed: _strokes.isEmpty ? null : _confirmClear,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
               ],
             ),
           ),
@@ -1669,7 +2650,13 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .07), blurRadius: 18, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .07),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1677,18 +2664,42 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                decoration: BoxDecoration(color: widget.lesson.color, borderRadius: BorderRadius.circular(99)),
-                child: Text('第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步', style: const TextStyle(fontWeight: FontWeight.w900, color: _ink)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: widget.lesson.color,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  '第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: _ink,
+                  ),
+                ),
               ),
               const Spacer(),
-              Text(widget.lesson.duration, style: const TextStyle(fontSize: 12, color: _muted, fontWeight: FontWeight.w800)),
+              Text(
+                widget.lesson.duration,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(value: (_stepIndex + 1) / widget.lesson.steps.length, minHeight: 7, backgroundColor: const Color(0xFFF3E9DC), color: _orange),
+            child: LinearProgressIndicator(
+              value: (_stepIndex + 1) / widget.lesson.steps.length,
+              minHeight: 7,
+              backgroundColor: const Color(0xFFF3E9DC),
+              color: _orange,
+            ),
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -1699,27 +2710,67 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                   Container(
                     height: 145,
                     width: double.infinity,
-                    decoration: BoxDecoration(color: widget.lesson.color.withValues(alpha: .72), borderRadius: BorderRadius.circular(22)),
+                    decoration: BoxDecoration(
+                      color: widget.lesson.color.withValues(alpha: .72),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
                     child: CustomPaint(
-                      painter: LessonGuidePainter(art: widget.lesson.art, visibleSteps: _stepIndex + 1, accent: widget.lesson.color, preview: true),
+                      painter: LessonGuidePainter(
+                        art: widget.lesson.art,
+                        visibleSteps: _stepIndex + 1,
+                        accent: widget.lesson.color,
+                        preview: true,
+                      ),
                       child: const SizedBox.expand(),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(step.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _ink)),
+                  Text(
+                    step.title,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: _ink,
+                    ),
+                  ),
                   const SizedBox(height: 7),
-                  Text(step.description, style: const TextStyle(fontSize: 15, height: 1.4, color: _muted, fontWeight: FontWeight.w700)),
+                  Text(
+                    step.description,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: _muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF4D6), borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF4D6),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.lightbulb_rounded, color: Color(0xFFE49A00), size: 20),
+                        const Icon(
+                          Icons.lightbulb_rounded,
+                          color: Color(0xFFE49A00),
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
-                        Expanded(child: Text(step.tip, style: const TextStyle(fontSize: 13, height: 1.35, color: _ink, fontWeight: FontWeight.w700))),
+                        Expanded(
+                          child: Text(
+                            step.tip,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.35,
+                              color: _ink,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1740,10 +2791,25 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
               Expanded(
                 child: FilledButton.icon(
                   key: const ValueKey('lesson-next-step'),
-                  style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
-                  onPressed: _nextStep,
-                  icon: Icon(isLast ? Icons.celebration_rounded : Icons.arrow_forward_rounded),
-                  label: Text(isLast ? '完成课程' : '下一步', style: const TextStyle(fontWeight: FontWeight.w900)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _orange,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _isCompleting ? null : _nextStep,
+                  icon: _isCompleting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          isLast
+                              ? Icons.celebration_rounded
+                              : Icons.arrow_forward_rounded,
+                        ),
+                  label: Text(
+                    _isCompleting ? '正在保存…' : (isLast ? '完成课程' : '下一步'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
                 ),
               ),
             ],
@@ -1772,7 +2838,9 @@ class LessonGuidePainter extends CustomPainter {
     return Paint()
       ..color = preview
           ? _ink.withValues(alpha: .78)
-          : (isCurrent ? _orange.withValues(alpha: .58) : _brown.withValues(alpha: .24))
+          : (isCurrent
+                ? _orange.withValues(alpha: .58)
+                : _brown.withValues(alpha: .24))
       ..strokeWidth = (preview ? 4 : 5) * scale
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -1782,7 +2850,9 @@ class LessonGuidePainter extends CustomPainter {
   Paint _dotPaint(int stage) => Paint()
     ..color = preview
         ? _ink.withValues(alpha: .82)
-        : (stage == visibleSteps - 1 ? _orange.withValues(alpha: .62) : _brown.withValues(alpha: .28));
+        : (stage == visibleSteps - 1
+              ? _orange.withValues(alpha: .62)
+              : _brown.withValues(alpha: .28));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1822,24 +2892,79 @@ class LessonGuidePainter extends CustomPainter {
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawArc(Rect.fromCenter(center: Offset(-27 * s, -3 * s), width: 25 * s, height: 18 * s), .12, math.pi * .78, false, paint);
-      canvas.drawArc(Rect.fromCenter(center: Offset(27 * s, -3 * s), width: 25 * s, height: 18 * s), .12, math.pi * .78, false, paint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(-27 * s, -3 * s),
+          width: 25 * s,
+          height: 18 * s,
+        ),
+        .12,
+        math.pi * .78,
+        false,
+        paint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(27 * s, -3 * s),
+          width: 25 * s,
+          height: 18 * s,
+        ),
+        .12,
+        math.pi * .78,
+        false,
+        paint,
+      );
       canvas.drawCircle(Offset(0, 18 * s), 5 * s, _dotPaint(2));
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
-      canvas.drawArc(Rect.fromCenter(center: Offset(-8 * s, 28 * s), width: 18 * s, height: 14 * s), 0, math.pi, false, paint);
-      canvas.drawArc(Rect.fromCenter(center: Offset(8 * s, 28 * s), width: 18 * s, height: 14 * s), 0, math.pi, false, paint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(-8 * s, 28 * s),
+          width: 18 * s,
+          height: 14 * s,
+        ),
+        0,
+        math.pi,
+        false,
+        paint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(8 * s, 28 * s),
+          width: 18 * s,
+          height: 14 * s,
+        ),
+        0,
+        math.pi,
+        false,
+        paint,
+      );
       for (final y in [19.0, 31.0, 43.0]) {
-        canvas.drawLine(Offset(-18 * s, y * s), Offset(-84 * s, (y - 8) * s), paint);
-        canvas.drawLine(Offset(18 * s, y * s), Offset(84 * s, (y - 8) * s), paint);
+        canvas.drawLine(
+          Offset(-18 * s, y * s),
+          Offset(-84 * s, (y - 8) * s),
+          paint,
+        );
+        canvas.drawLine(
+          Offset(18 * s, y * s),
+          Offset(84 * s, (y - 8) * s),
+          paint,
+        );
       }
     }
   }
 
   void _paintDinosaur(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawOval(Rect.fromCenter(center: Offset(-15 * s, 18 * s), width: 142 * s, height: 92 * s), _linePaint(0, s));
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(-15 * s, 18 * s),
+          width: 142 * s,
+          height: 92 * s,
+        ),
+        _linePaint(0, s),
+      );
     }
     if (visibleSteps >= 2) {
       final neck = Path()
@@ -1868,14 +2993,31 @@ class LessonGuidePainter extends CustomPainter {
         canvas.drawPath(spike, paint);
       }
       canvas.drawCircle(Offset(78 * s, -83 * s), 4 * s, _dotPaint(3));
-      canvas.drawArc(Rect.fromCenter(center: Offset(76 * s, -66 * s), width: 22 * s, height: 13 * s), 0, math.pi, false, paint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(76 * s, -66 * s),
+          width: 22 * s,
+          height: 13 * s,
+        ),
+        0,
+        math.pi,
+        false,
+        paint,
+      );
     }
   }
 
   void _paintCar(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, 18 * s), width: 188 * s, height: 66 * s), Radius.circular(17 * s)),
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(0, 18 * s),
+            width: 188 * s,
+            height: 66 * s,
+          ),
+          Radius.circular(17 * s),
+        ),
         _linePaint(0, s),
       );
     }
@@ -1897,7 +3039,11 @@ class LessonGuidePainter extends CustomPainter {
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
       canvas.drawLine(Offset(3 * s, -57 * s), Offset(3 * s, -16 * s), paint);
-      canvas.drawLine(Offset(-28 * s, -55 * s), Offset(-49 * s, -17 * s), paint);
+      canvas.drawLine(
+        Offset(-28 * s, -55 * s),
+        Offset(-49 * s, -17 * s),
+        paint,
+      );
       canvas.drawCircle(Offset(80 * s, 15 * s), 8 * s, _dotPaint(3));
       canvas.drawLine(Offset(-88 * s, 12 * s), Offset(-70 * s, 12 * s), paint);
     }
@@ -1905,16 +3051,53 @@ class LessonGuidePainter extends CustomPainter {
 
   void _paintLantern(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawOval(Rect.fromCenter(center: Offset(0, -8 * s), width: 126 * s, height: 150 * s), _linePaint(0, s));
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(0, -8 * s),
+          width: 126 * s,
+          height: 150 * s,
+        ),
+        _linePaint(0, s),
+      );
     }
     if (visibleSteps >= 2) {
       final paint = _linePaint(1, s);
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, -87 * s), width: 72 * s, height: 18 * s), Radius.circular(5 * s)), paint);
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(0, 71 * s), width: 72 * s, height: 18 * s), Radius.circular(5 * s)), paint);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(0, -87 * s),
+            width: 72 * s,
+            height: 18 * s,
+          ),
+          Radius.circular(5 * s),
+        ),
+        paint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(0, 71 * s),
+            width: 72 * s,
+            height: 18 * s,
+          ),
+          Radius.circular(5 * s),
+        ),
+        paint,
+      );
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawArc(Rect.fromCenter(center: Offset(0, -106 * s), width: 70 * s, height: 58 * s), math.pi, math.pi, false, paint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(0, -106 * s),
+          width: 70 * s,
+          height: 58 * s,
+        ),
+        math.pi,
+        math.pi,
+        false,
+        paint,
+      );
       canvas.drawLine(Offset(0, 81 * s), Offset(0, 123 * s), paint);
       for (final x in [-18.0, 0.0, 18.0]) {
         canvas.drawLine(Offset(x * s, 123 * s), Offset(x * s, 148 * s), paint);
@@ -1922,9 +3105,33 @@ class LessonGuidePainter extends CustomPainter {
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
-      canvas.drawArc(Rect.fromCenter(center: Offset(0, -8 * s), width: 72 * s, height: 148 * s), -math.pi / 2, math.pi, false, paint);
-      canvas.drawArc(Rect.fromCenter(center: Offset(0, -8 * s), width: 72 * s, height: 148 * s), math.pi / 2, math.pi, false, paint);
-      for (final offset in [const Offset(-90, -58), const Offset(92, -30), const Offset(-86, 36)]) {
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(0, -8 * s),
+          width: 72 * s,
+          height: 148 * s,
+        ),
+        -math.pi / 2,
+        math.pi,
+        false,
+        paint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(0, -8 * s),
+          width: 72 * s,
+          height: 148 * s,
+        ),
+        math.pi / 2,
+        math.pi,
+        false,
+        paint,
+      );
+      for (final offset in [
+        const Offset(-90, -58),
+        const Offset(92, -30),
+        const Offset(-86, 36),
+      ]) {
         canvas.drawCircle(offset * s, 5 * s, _dotPaint(3));
       }
     }
@@ -1932,7 +3139,10 @@ class LessonGuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant LessonGuidePainter oldDelegate) {
-    return oldDelegate.art != art || oldDelegate.visibleSteps != visibleSteps || oldDelegate.accent != accent || oldDelegate.preview != preview;
+    return oldDelegate.art != art ||
+        oldDelegate.visibleSteps != visibleSteps ||
+        oldDelegate.accent != accent ||
+        oldDelegate.preview != preview;
   }
 }
 
@@ -1974,8 +3184,12 @@ class _GalleryPageState extends State<GalleryPage> {
   List<GalleryArtwork> get _visibleArtworks {
     return switch (_filter) {
       GalleryFilter.all => widget.artworks,
-      GalleryFilter.recent => widget.artworks.where((artwork) => artwork.createdLabel != '上周').toList(),
-      GalleryFilter.favorite => widget.artworks.where((artwork) => artwork.isFavorite).toList(),
+      GalleryFilter.recent =>
+        widget.artworks
+            .where((artwork) => artwork.createdLabel != '上周')
+            .toList(),
+      GalleryFilter.favorite =>
+        widget.artworks.where((artwork) => artwork.isFavorite).toList(),
     };
   }
 
@@ -1990,13 +3204,22 @@ class _GalleryPageState extends State<GalleryPage> {
           initialValue: artwork.title,
           autofocus: true,
           maxLength: 20,
-          decoration: const InputDecoration(labelText: '作品名称', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            labelText: '作品名称',
+            border: OutlineInputBorder(),
+          ),
           onChanged: (value) => draftTitle = value,
           onFieldSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, draftTitle), child: const Text('保存名字')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, draftTitle),
+            child: const Text('保存名字'),
+          ),
         ],
       ),
     );
@@ -2012,9 +3235,14 @@ class _GalleryPageState extends State<GalleryPage> {
         title: const Text('删除这幅作品吗？'),
         content: Text('「${artwork.title}」删除后无法恢复。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('保留作品')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('保留作品'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB33A2B)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB33A2B),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('确认删除'),
           ),
@@ -2031,16 +3259,23 @@ class _GalleryPageState extends State<GalleryPage> {
     final selected = _selectedArtwork;
     return AppPage(
       title: selected == null ? '我的作品集' : '作品详情 · ${selected.title}',
-      onBack: selected == null ? widget.onBack : () => setState(() => _selectedArtworkId = null),
+      onBack: selected == null
+          ? widget.onBack
+          : () => setState(() => _selectedArtworkId = null),
       child: selected == null
           ? GalleryOverview(
               artworks: _visibleArtworks,
               totalCount: widget.artworks.length,
-              favoriteCount: widget.artworks.where((artwork) => artwork.isFavorite).length,
-              createdCount: widget.artworks.where((artwork) => artwork.isUserCreated).length,
+              favoriteCount: widget.artworks
+                  .where((artwork) => artwork.isFavorite)
+                  .length,
+              createdCount: widget.artworks
+                  .where((artwork) => artwork.isUserCreated)
+                  .length,
               filter: _filter,
               onFilter: (filter) => setState(() => _filter = filter),
-              onOpen: (artwork) => setState(() => _selectedArtworkId = artwork.id),
+              onOpen: (artwork) =>
+                  setState(() => _selectedArtworkId = artwork.id),
               onCreateNew: widget.onCreateNew,
               onToggleFavorite: widget.onToggleFavorite,
             )
@@ -2102,22 +3337,46 @@ class GalleryOverview extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        GalleryFilterChip(label: '全部', filter: GalleryFilter.all, selected: filter == GalleryFilter.all, onTap: onFilter),
+                        GalleryFilterChip(
+                          label: '全部',
+                          filter: GalleryFilter.all,
+                          selected: filter == GalleryFilter.all,
+                          onTap: onFilter,
+                        ),
                         const SizedBox(width: 9),
-                        GalleryFilterChip(label: '最近', filter: GalleryFilter.recent, selected: filter == GalleryFilter.recent, onTap: onFilter),
+                        GalleryFilterChip(
+                          label: '最近',
+                          filter: GalleryFilter.recent,
+                          selected: filter == GalleryFilter.recent,
+                          onTap: onFilter,
+                        ),
                         const SizedBox(width: 9),
-                        GalleryFilterChip(label: '收藏', filter: GalleryFilter.favorite, selected: filter == GalleryFilter.favorite, onTap: onFilter),
+                        GalleryFilterChip(
+                          label: '收藏',
+                          filter: GalleryFilter.favorite,
+                          selected: filter == GalleryFilter.favorite,
+                          onTap: onFilter,
+                        ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text('${artworks.length} 幅作品', style: const TextStyle(color: _muted, fontWeight: FontWeight.w800)),
+                Text(
+                  '${artworks.length} 幅作品',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
             if (artworks.isEmpty)
-              GalleryEmptyState(isFavorite: filter == GalleryFilter.favorite, onCreateNew: onCreateNew)
+              GalleryEmptyState(
+                isFavorite: filter == GalleryFilter.favorite,
+                onCreateNew: onCreateNew,
+              )
             else
               GridView.builder(
                 shrinkWrap: true,
@@ -2168,8 +3427,8 @@ class GalleryFilterChip extends StatelessWidget {
         filter == GalleryFilter.favorite
             ? Icons.favorite_rounded
             : filter == GalleryFilter.recent
-                ? Icons.schedule_rounded
-                : Icons.grid_view_rounded,
+            ? Icons.schedule_rounded
+            : Icons.grid_view_rounded,
         size: 18,
       ),
       selected: selected,
@@ -2204,37 +3463,72 @@ class GalleryHero extends StatelessWidget {
       decoration: BoxDecoration(
         color: _butter,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: _brown.withValues(alpha: .12), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: _brown.withValues(alpha: .12),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final showPreview = constraints.maxWidth >= 560 && artworks.isNotEmpty;
+          final showPreview =
+              constraints.maxWidth >= 560 && artworks.isNotEmpty;
           return Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('米娅的小画展', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: _ink)),
+                    const Text(
+                      '米娅的小画展',
+                      style: TextStyle(
+                        fontSize: 25,
+                        fontWeight: FontWeight.w900,
+                        color: _ink,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    const Text('每一幅画，都是独一无二的小故事。', style: TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+                    const Text(
+                      '每一幅画，都是独一无二的小故事。',
+                      style: TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        GalleryStat(icon: Icons.photo_library_rounded, text: '$totalCount 幅作品'),
-                        GalleryStat(icon: Icons.favorite_rounded, text: '$favoriteCount 个收藏'),
-                        GalleryStat(icon: Icons.brush_rounded, text: '$createdCount 幅新画'),
+                        GalleryStat(
+                          icon: Icons.photo_library_rounded,
+                          text: '$totalCount 幅作品',
+                        ),
+                        GalleryStat(
+                          icon: Icons.favorite_rounded,
+                          text: '$favoriteCount 个收藏',
+                        ),
+                        GalleryStat(
+                          icon: Icons.brush_rounded,
+                          text: '$createdCount 幅新画',
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       key: const ValueKey('gallery-create-new'),
-                      style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _orange,
+                        foregroundColor: Colors.white,
+                      ),
                       onPressed: onCreateNew,
                       icon: const Icon(Icons.add_rounded),
-                      label: const Text('画一幅新的', style: TextStyle(fontWeight: FontWeight.w900)),
+                      label: const Text(
+                        '画一幅新的',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ],
                 ),
@@ -2259,7 +3553,13 @@ class GalleryHero extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(18),
-                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 12, offset: const Offset(0, 6))],
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: .12),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
                               ),
                               child: ArtworkThumbnail(artwork: artworks[i]),
                             ),
@@ -2287,13 +3587,23 @@ class GalleryStat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .72), borderRadius: BorderRadius.circular(99)),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .72),
+        borderRadius: BorderRadius.circular(99),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: _brown, size: 16),
           const SizedBox(width: 5),
-          Text(text, style: const TextStyle(fontSize: 12, color: _ink, fontWeight: FontWeight.w900)),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: _ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );
@@ -2301,7 +3611,12 @@ class GalleryStat extends StatelessWidget {
 }
 
 class GalleryArtworkCard extends StatelessWidget {
-  const GalleryArtworkCard({super.key, required this.artwork, required this.onTap, required this.onFavorite});
+  const GalleryArtworkCard({
+    super.key,
+    required this.artwork,
+    required this.onTap,
+    required this.onFavorite,
+  });
 
   final GalleryArtwork artwork;
   final VoidCallback onTap;
@@ -2333,24 +3648,60 @@ class GalleryArtworkCard extends StatelessWidget {
                         tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.white.withValues(alpha: .92),
-                          foregroundColor: artwork.isFavorite ? _orange : _brown,
+                          foregroundColor: artwork.isFavorite
+                              ? _orange
+                              : _brown,
                         ),
                         onPressed: onFavorite,
-                        icon: Icon(artwork.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+                        icon: Icon(
+                          artwork.isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 10),
-              Text(artwork.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _ink)),
+              Text(
+                artwork.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: _ink,
+                ),
+              ),
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(artwork.isUserCreated ? Icons.brush_rounded : Icons.auto_awesome_rounded, size: 14, color: _muted),
+                  Icon(
+                    artwork.isUserCreated
+                        ? Icons.brush_rounded
+                        : Icons.auto_awesome_rounded,
+                    size: 14,
+                    color: _muted,
+                  ),
                   const SizedBox(width: 4),
-                  Expanded(child: Text(artwork.isUserCreated ? '自由创作 · ${artwork.createdLabel}' : '示例作品 · ${artwork.createdLabel}', style: const TextStyle(fontSize: 12, color: _muted, fontWeight: FontWeight.w700))),
-                  const Icon(Icons.arrow_forward_rounded, size: 18, color: _orange),
+                  Expanded(
+                    child: Text(
+                      artwork.isUserCreated
+                          ? '${artwork.source == 'lesson' ? '课程作品' : '自由创作'} · ${artwork.createdLabel}'
+                          : '示例作品 · ${artwork.createdLabel}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: _orange,
+                  ),
                 ],
               ),
             ],
@@ -2375,7 +3726,11 @@ class ArtworkThumbnail extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: artwork.pngBytes != null
-              ? Image.memory(artwork.pngBytes!, fit: BoxFit.contain, gaplessPlayback: true)
+              ? Image.memory(
+                  artwork.pngBytes!,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                )
               : CustomPaint(
                   painter: SketchPainter(artwork.kind ?? SketchKind.sun),
                   child: const SizedBox.expand(),
@@ -2406,67 +3761,143 @@ class GalleryArtworkDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sideBySide = constraints.maxWidth >= 720 && constraints.maxHeight >= 500;
+        final sideBySide =
+            constraints.maxWidth >= 720 && constraints.maxHeight >= 500;
         final preview = Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+          ),
           child: ArtworkThumbnail(artwork: artwork),
         );
         final details = Container(
           padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: artwork.color, borderRadius: BorderRadius.circular(99)),
-                    child: Text(artwork.isUserCreated ? '我的创作' : '画室示例', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: artwork.color,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      artwork.isUserCreated ? '我的创作' : '画室示例',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: _ink,
+                      ),
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
                     key: ValueKey('gallery-detail-favorite-${artwork.id}'),
                     tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
                     onPressed: onFavorite,
-                    icon: Icon(artwork.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: artwork.isFavorite ? _orange : _brown),
+                    icon: Icon(
+                      artwork.isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: artwork.isFavorite ? _orange : _brown,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(artwork.title, style: const TextStyle(fontSize: 29, height: 1.1, fontWeight: FontWeight.w900, color: _ink)),
+              Text(
+                artwork.title,
+                style: const TextStyle(
+                  fontSize: 29,
+                  height: 1.1,
+                  fontWeight: FontWeight.w900,
+                  color: _ink,
+                ),
+              ),
               const SizedBox(height: 8),
-              Text('${artwork.createdLabel}完成', style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+              Text(
+                '${artwork.createdLabel}完成',
+                style: const TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: const Color(0xFFFFF4D6), borderRadius: BorderRadius.circular(18)),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF4D6),
+                  borderRadius: BorderRadius.circular(18),
+                ),
                 child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.auto_awesome_rounded, color: _orange, size: 20),
                     SizedBox(width: 8),
-                    Expanded(child: Text('每一次创作都值得被好好收藏。给喜欢的作品点一颗爱心吧！', style: TextStyle(height: 1.4, color: _ink, fontWeight: FontWeight.w700))),
+                    Expanded(
+                      child: Text(
+                        '每一次创作都值得被好好收藏。给喜欢的作品点一颗爱心吧！',
+                        style: TextStyle(
+                          height: 1.4,
+                          color: _ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 18),
-              const Text('作品信息', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+              const Text(
+                '作品信息',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: _ink,
+                ),
+              ),
               const SizedBox(height: 8),
-              GalleryInfoRow(icon: Icons.schedule_rounded, label: '完成时间', value: artwork.createdLabel),
+              GalleryInfoRow(
+                icon: Icons.schedule_rounded,
+                label: '完成时间',
+                value: artwork.createdLabel,
+              ),
               const SizedBox(height: 8),
-              GalleryInfoRow(icon: Icons.palette_rounded, label: '创作工具', value: artwork.isUserCreated ? '自由画板' : '画室示例'),
+              GalleryInfoRow(
+                icon: Icons.palette_rounded,
+                label: '创作工具',
+                value: artwork.isUserCreated ? '自由画板' : '画室示例',
+              ),
               const SizedBox(height: 8),
-              const GalleryInfoRow(icon: Icons.crop_landscape_rounded, label: '画布形式', value: '横屏画布'),
+              const GalleryInfoRow(
+                icon: Icons.crop_landscape_rounded,
+                label: '画布形式',
+                value: '横屏画布',
+              ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: _orange, foregroundColor: Colors.white),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _orange,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: onCreateNew,
                   icon: const Icon(Icons.brush_rounded),
-                  label: const Text('再画一幅', style: TextStyle(fontWeight: FontWeight.w900)),
+                  label: const Text(
+                    '再画一幅',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
                 ),
               ),
               if (onRename != null || onDelete != null) ...[
@@ -2482,12 +3913,15 @@ class GalleryArtworkDetail extends StatelessWidget {
                           label: const Text('重命名'),
                         ),
                       ),
-                    if (onRename != null && onDelete != null) const SizedBox(width: 10),
+                    if (onRename != null && onDelete != null)
+                      const SizedBox(width: 10),
                     if (onDelete != null)
                       Expanded(
                         child: OutlinedButton.icon(
                           key: const ValueKey('gallery-delete'),
-                          style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFB33A2B)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFB33A2B),
+                          ),
                           onPressed: onDelete,
                           icon: const Icon(Icons.delete_outline_rounded),
                           label: const Text('删除'),
@@ -2522,7 +3956,12 @@ class GalleryArtworkDetail extends StatelessWidget {
 }
 
 class GalleryInfoRow extends StatelessWidget {
-  const GalleryInfoRow({super.key, required this.icon, required this.label, required this.value});
+  const GalleryInfoRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
   final String label;
@@ -2534,16 +3973,34 @@ class GalleryInfoRow extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: _brown),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 13, color: _muted, fontWeight: FontWeight.w700)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: _muted,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const Spacer(),
-        Text(value, style: const TextStyle(fontSize: 13, color: _ink, fontWeight: FontWeight.w900)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            color: _ink,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ],
     );
   }
 }
 
 class GalleryEmptyState extends StatelessWidget {
-  const GalleryEmptyState({super.key, required this.isFavorite, required this.onCreateNew});
+  const GalleryEmptyState({
+    super.key,
+    required this.isFavorite,
+    required this.onCreateNew,
+  });
 
   final bool isFavorite;
   final VoidCallback onCreateNew;
@@ -2553,17 +4010,42 @@ class GalleryEmptyState extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 240),
       padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(isFavorite ? Icons.favorite_border_rounded : Icons.photo_library_outlined, size: 52, color: _brown),
+          Icon(
+            isFavorite
+                ? Icons.favorite_border_rounded
+                : Icons.photo_library_outlined,
+            size: 52,
+            color: _brown,
+          ),
           const SizedBox(height: 12),
-          Text(isFavorite ? '还没有收藏作品' : '作品集还是空的', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _ink)),
+          Text(
+            isFavorite ? '还没有收藏作品' : '作品集还是空的',
+            style: const TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+              color: _ink,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(isFavorite ? '看到喜欢的作品，就点亮右上角的爱心。' : '去画板完成第一幅作品吧！', textAlign: TextAlign.center, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
+          Text(
+            isFavorite ? '看到喜欢的作品，就点亮右上角的爱心。' : '去画板完成第一幅作品吧！',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 14),
-          if (!isFavorite) FilledButton.icon(onPressed: onCreateNew, icon: const Icon(Icons.brush_rounded), label: const Text('开始画画')),
+          if (!isFavorite)
+            FilledButton.icon(
+              onPressed: onCreateNew,
+              icon: const Icon(Icons.brush_rounded),
+              label: const Text('开始画画'),
+            ),
         ],
       ),
     );
@@ -2584,8 +4066,13 @@ class AnimationPage extends StatelessWidget {
           Expanded(
             child: Container(
               width: double.infinity,
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32)),
-              child: const Center(child: Text('✨', style: TextStyle(fontSize: 112))),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(32),
+              ),
+              child: const Center(
+                child: Text('✨', style: TextStyle(fontSize: 112)),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -2617,13 +4104,19 @@ class ParentPage extends StatelessWidget {
         child: Container(
           width: 360,
           padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(34)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(34),
+          ),
           child: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.lock_rounded, size: 50, color: _brown),
               SizedBox(height: 18),
-              Text('Parents Only', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              Text(
+                'Parents Only',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
               SizedBox(height: 6),
               Text('What is 12 + 7?', style: TextStyle(color: _muted)),
               SizedBox(height: 18),
@@ -2637,7 +4130,12 @@ class ParentPage extends StatelessWidget {
 }
 
 class AppPage extends StatelessWidget {
-  const AppPage({super.key, required this.title, required this.onBack, required this.child});
+  const AppPage({
+    super.key,
+    required this.title,
+    required this.onBack,
+    required this.child,
+  });
   final String title;
   final VoidCallback onBack;
   final Widget child;
@@ -2662,7 +4160,10 @@ class AppPage extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
