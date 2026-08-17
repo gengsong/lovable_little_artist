@@ -22,9 +22,19 @@ void main() {
       source: 'free',
       backgroundColor: 0xFFD2F2DC,
       pngBytes: Uint8List.fromList([1, 2, 3, 4]),
+      replayData: {
+        'canvasWidth': 700,
+        'canvasHeight': 500,
+        'strokes': <Object?>[],
+      },
     );
     await firstStore.saveArtwork(artwork);
     await firstStore.saveLessonProgress({'round-cat': 3});
+    await firstStore.savePreferences({
+      'onboardingComplete': true,
+      'soundEnabled': false,
+      'ageGroup': '6-8岁',
+    });
     await firstStore.saveDraft('free-drawing', {
       'version': 1,
       'strokes': <Object?>[],
@@ -38,7 +48,10 @@ void main() {
     expect(snapshot.artworks, hasLength(1));
     expect(snapshot.artworks.single.title, '彩虹花园');
     expect(snapshot.artworks.single.pngBytes, [1, 2, 3, 4]);
+    expect(snapshot.artworks.single.replayData?['canvasWidth'], 700);
     expect(snapshot.lessonProgress['round-cat'], 3);
+    expect(snapshot.preferences['soundEnabled'], isFalse);
+    expect(snapshot.preferences['ageGroup'], '6-8岁');
     expect(snapshot.nextArtworkNumber, 2);
     expect(await restoredStore.loadDraft('free-drawing'), isNotNull);
 

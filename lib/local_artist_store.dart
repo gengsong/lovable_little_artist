@@ -15,6 +15,7 @@ class StoredArtwork {
     required this.backgroundColor,
     required this.pngBytes,
     this.lessonId,
+    this.replayData,
   });
 
   final String id;
@@ -26,6 +27,7 @@ class StoredArtwork {
   final int backgroundColor;
   final Uint8List pngBytes;
   final String? lessonId;
+  final Map<String, Object?>? replayData;
 
   StoredArtwork copyWith({String? title, bool? isFavorite}) => StoredArtwork(
     id: id,
@@ -37,6 +39,7 @@ class StoredArtwork {
     backgroundColor: backgroundColor,
     pngBytes: pngBytes,
     lessonId: lessonId,
+    replayData: replayData,
   );
 
   Map<String, Object?> toJson() => {
@@ -48,6 +51,7 @@ class StoredArtwork {
     'source': source,
     'backgroundColor': backgroundColor,
     if (lessonId != null) 'lessonId': lessonId,
+    if (replayData != null) 'replayData': replayData,
   };
 }
 
@@ -56,11 +60,13 @@ class ArtistStoreSnapshot {
     required this.artworks,
     required this.lessonProgress,
     required this.nextArtworkNumber,
+    required this.preferences,
   });
 
   final List<StoredArtwork> artworks;
   final Map<String, int> lessonProgress;
   final int nextArtworkNumber;
+  final Map<String, Object?> preferences;
 }
 
 abstract class ArtistStore {
@@ -69,6 +75,7 @@ abstract class ArtistStore {
   Future<void> updateArtwork(StoredArtwork artwork);
   Future<void> deleteArtwork(String id);
   Future<void> saveLessonProgress(Map<String, int> progress);
+  Future<void> savePreferences(Map<String, Object?> preferences);
   Future<Map<String, Object?>?> loadDraft(String key);
   Future<void> saveDraft(String key, Map<String, Object?> draft);
   Future<void> deleteDraft(String key);
@@ -76,16 +83,27 @@ abstract class ArtistStore {
 
 /// Fast, isolated storage used by widget previews and tests.
 class MemoryArtistStore implements ArtistStore {
+  MemoryArtistStore({Map<String, Object?>? preferences})
+    : _preferences =
+          preferences ??
+          {
+            'onboardingComplete': true,
+            'soundEnabled': false,
+            'musicEnabled': false,
+          };
+
   final List<StoredArtwork> _artworks = [];
   final Map<String, int> _lessonProgress = {};
   final Map<String, Map<String, Object?>> _drafts = {};
   int _nextArtworkNumber = 1;
+  Map<String, Object?> _preferences;
 
   @override
   Future<ArtistStoreSnapshot> load() async => ArtistStoreSnapshot(
     artworks: List.unmodifiable(_artworks),
     lessonProgress: Map.unmodifiable(_lessonProgress),
     nextArtworkNumber: _nextArtworkNumber,
+    preferences: Map.unmodifiable(_preferences),
   );
 
   @override
@@ -110,6 +128,11 @@ class MemoryArtistStore implements ArtistStore {
     _lessonProgress
       ..clear()
       ..addAll(progress);
+  }
+
+  @override
+  Future<void> savePreferences(Map<String, Object?> preferences) async {
+    _preferences = Map.of(preferences);
   }
 
   @override
@@ -138,6 +161,7 @@ class LocalArtistStore implements ArtistStore {
   List<StoredArtwork> _artworks = [];
   Map<String, int> _lessonProgress = {};
   int _nextArtworkNumber = 1;
+  Map<String, Object?> _preferences = {};
   Future<void> _stateWrites = Future.value();
 
   Future<Directory?> _ensureRoot() async {
@@ -164,6 +188,7 @@ class LocalArtistStore implements ArtistStore {
         artworks: List.unmodifiable(_artworks),
         lessonProgress: Map.unmodifiable(_lessonProgress),
         nextArtworkNumber: _nextArtworkNumber,
+        preferences: Map.unmodifiable(_preferences),
       );
     }
     final stateFile = File('${root.path}/state.json');
@@ -172,6 +197,7 @@ class LocalArtistStore implements ArtistStore {
         artworks: [],
         lessonProgress: {},
         nextArtworkNumber: 1,
+        preferences: {},
       );
     }
     try {
@@ -183,6 +209,8 @@ class LocalArtistStore implements ArtistStore {
         (key, value) => MapEntry(key, (value as num).toInt()),
       );
       _nextArtworkNumber = (json['nextArtworkNumber'] as num?)?.toInt() ?? 1;
+      _preferences = (json['preferences'] as Map<String, dynamic>? ?? const {})
+          .cast<String, Object?>();
       final loaded = <StoredArtwork>[];
       for (final item in (json['artworks'] as List<dynamic>? ?? const [])) {
         final metadata = item as Map<String, dynamic>;
@@ -202,6 +230,8 @@ class LocalArtistStore implements ArtistStore {
             backgroundColor:
                 (metadata['backgroundColor'] as num?)?.toInt() ?? 0xFFD2F2DC,
             lessonId: metadata['lessonId'] as String?,
+            replayData: (metadata['replayData'] as Map<String, dynamic>?)
+                ?.cast<String, Object?>(),
             pngBytes: await imageFile.readAsBytes(),
           ),
         );
@@ -211,11 +241,13 @@ class LocalArtistStore implements ArtistStore {
       _artworks = [];
       _lessonProgress = {};
       _nextArtworkNumber = 1;
+      _preferences = {};
     }
     return ArtistStoreSnapshot(
       artworks: List.unmodifiable(_artworks),
       lessonProgress: Map.unmodifiable(_lessonProgress),
       nextArtworkNumber: _nextArtworkNumber,
+      preferences: Map.unmodifiable(_preferences),
     );
   }
 
@@ -262,6 +294,13 @@ class LocalArtistStore implements ArtistStore {
   }
 
   @override
+  Future<void> savePreferences(Map<String, Object?> preferences) async {
+    _preferences = Map.of(preferences);
+    final root = await _ensureRoot();
+    if (root != null) await _writeState(root);
+  }
+
+  @override
   Future<Map<String, Object?>?> loadDraft(String key) async {
     final root = await _ensureRoot();
     if (root == null) return null;
@@ -299,6 +338,7 @@ class LocalArtistStore implements ArtistStore {
         'version': 1,
         'nextArtworkNumber': _nextArtworkNumber,
         'lessonProgress': _lessonProgress,
+        'preferences': _preferences,
         'artworks': _artworks.map((item) => item.toJson()).toList(),
       }),
     );

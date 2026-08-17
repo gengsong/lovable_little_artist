@@ -7,13 +7,31 @@ void main() {
   testWidgets('shows Lovable-inspired home screen', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
 
     expect(find.text('米娅!'), findsOneWidget);
     expect(find.text('今天想做什么？'), findsOneWidget);
     expect(find.text('自由画画'), findsOneWidget);
     expect(find.text('跟着学画'), findsOneWidget);
     expect(find.text('最近画的'), findsOneWidget);
+  });
+
+  testWidgets('studio rail fits the iPad mini safe area', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 24, bottom: 33);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(StudioRail), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('guided lesson keeps progress and completes on iPad landscape', (
@@ -32,7 +50,7 @@ void main() {
     expect(find.byKey(const ValueKey('lesson-card-round-cat')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byKey(const ValueKey('lesson-card-round-cat')));
+    await tester.tap(find.byKey(const ValueKey('lesson-continue')));
     await tester.pumpAndSettle();
 
     expect(find.text('第 1 / 4 步'), findsOneWidget);
@@ -54,7 +72,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 / 4 步'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('lesson-card-round-cat')));
+    await tester.tap(find.byKey(const ValueKey('lesson-continue')));
     await tester.pumpAndSettle();
     expect(find.text('第 2 / 4 步'), findsOneWidget);
 
@@ -111,6 +129,163 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('advanced drawing tools are selectable and undoable', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    for (final tool in ['喷枪', '图案笔', '印章', '贴纸', '填色桶']) {
+      expect(find.byTooltip(tool), findsOneWidget);
+    }
+
+    await tester.tap(find.byTooltip('填色桶'));
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey('free-drawing-canvas'))),
+    );
+    await tester.pump();
+    expect(find.byTooltip('撤销'), findsOneWidget);
+    await tester.tap(find.byTooltip('撤销'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('artwork animation supports four playable motions', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('动画故事'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    for (final motion in ['jump', 'blink', 'fly', 'replay']) {
+      final finder = find.byKey(ValueKey('animation-motion-$motion'));
+      await tester.ensureVisible(finder);
+      await tester.tap(finder);
+      await tester.pump(const Duration(milliseconds: 120));
+    }
+    await tester.tap(find.byKey(const ValueKey('animation-play-toggle')));
+    await tester.pump();
+    expect(find.byTooltip('播放动画'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('parent gate unlocks statistics and sound controls', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('家长'));
+    await tester.pumpAndSettle();
+    expect(find.text('12 + 7 等于多少？'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('parent-answer-19')));
+    await tester.pumpAndSettle();
+    expect(find.text('累计使用'), findsOneWidget);
+    expect(find.text('孩子作品'), findsOneWidget);
+    expect(find.text('语音提示与音效'), findsOneWidget);
+    expect(find.text('推荐年龄'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('first use onboarding completes in three steps', (
+    WidgetTester tester,
+  ) async {
+    final store = MemoryArtistStore(
+      preferences: {
+        'onboardingComplete': false,
+        'soundEnabled': false,
+        'musicEnabled': false,
+      },
+    );
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.pumpAndSettle();
+
+    expect(find.text('欢迎来到小小画室'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pump();
+    expect(find.text('每次创作都有惊喜'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pump();
+    expect(find.text('专为孩子安心设计'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天想做什么？'), findsOneWidget);
+    expect((await store.load()).preferences['onboardingComplete'], isTrue);
+  });
+
+  testWidgets('coloring playground fills safely and saves to gallery', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('涂色乐园'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('彩虹蝴蝶'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('coloring-template-fish')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('coloring-template-rabbit')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('coloring-template-pony')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('coloring-template-penguin')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('coloring-template-rabbit')));
+    await tester.pump();
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey('coloring-canvas'))),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('coloring-save')));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('太棒啦！'), findsOneWidget);
+    expect(find.textContaining('获得一颗创作星星'), findsOneWidget);
+    await tester.tap(find.text('继续创作'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('作品集'));
+    await tester.pumpAndSettle();
+    expect(find.text('涂色作品 · 软萌小兔'), findsOneWidget);
+
+    await tester.tap(find.text('首页'));
+    await tester.pumpAndSettle();
+    expect(find.text('涂色作品 · 软萌小兔'), findsOneWidget);
+    expect(find.text('⭐ 1 · 🔥 1 天'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('lesson catalog stays usable on a short landscape phone', (
     WidgetTester tester,
   ) async {
@@ -119,7 +294,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
     await tester.ensureVisible(find.text('跟着学画'));
     await tester.tap(find.text('跟着学画'));
     await tester.pumpAndSettle();
@@ -170,7 +346,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
     await tester.tap(find.text('自由画画'));
     await tester.pumpAndSettle();
 
@@ -184,6 +361,10 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 300)),
     );
     await tester.pumpAndSettle();
+
+    final savedArtwork = (await store.load()).artworks.single;
+    expect(savedArtwork.replayData?['strokes'], isNotEmpty);
+    expect(savedArtwork.replayData?['canvasWidth'], isA<num>());
 
     await tester.tap(find.text('作品集'));
     await tester.pumpAndSettle();
