@@ -85,12 +85,7 @@ abstract class ArtistStore {
 class MemoryArtistStore implements ArtistStore {
   MemoryArtistStore({Map<String, Object?>? preferences})
     : _preferences =
-          preferences ??
-          {
-            'onboardingComplete': true,
-            'soundEnabled': false,
-            'musicEnabled': false,
-          };
+          preferences ?? {'onboardingComplete': true, 'soundEnabled': false};
 
   final List<StoredArtwork> _artworks = [];
   final Map<String, int> _lessonProgress = {};

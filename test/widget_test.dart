@@ -4,6 +4,18 @@ import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/main.dart';
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    binding.platformDispatcher.localeTestValue = const Locale('zh');
+    binding.platformDispatcher.localesTestValue = const [Locale('zh')];
+  });
+
+  tearDown(() {
+    binding.platformDispatcher.clearLocaleTestValue();
+    binding.platformDispatcher.clearLocalesTestValue();
+  });
+
   testWidgets('shows Lovable-inspired home screen', (
     WidgetTester tester,
   ) async {
@@ -32,6 +44,82 @@ void main() {
 
     expect(find.byType(StudioRail), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('follows the system language and persists manual switching', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    binding.platformDispatcher.localeTestValue = const Locale('en');
+    binding.platformDispatcher.localesTestValue = const [Locale('en')];
+    final store = MemoryArtistStore();
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.pumpAndSettle();
+
+    expect(find.text('What would you like to make?'), findsOneWidget);
+    expect(find.text('Free Draw'), findsOneWidget);
+    expect(find.text('今天想做什么？'), findsNothing);
+    expect(find.text('中文'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('中文').first);
+    await tester.pumpAndSettle();
+    expect(find.text('今天想做什么？'), findsOneWidget);
+    expect(find.text('EN'), findsNWidgets(2));
+    expect((await store.load()).preferences['localeMode'], 'zh');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('major English screens do not leak Chinese interface text', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    binding.platformDispatcher.localeTestValue = const Locale('en');
+    binding.platformDispatcher.localesTestValue = const [Locale('en')];
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.pumpAndSettle();
+
+    void expectNoChineseText() {
+      final leaked = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((widget) => widget.data ?? '')
+          .where((text) => RegExp(r'[\u3400-\u9fff]').hasMatch(text))
+          .where((text) => text != '中文')
+          .toList();
+      expect(leaked, isEmpty);
+      expect(tester.takeException(), isNull);
+    }
+
+    expectNoChineseText();
+    for (final destination in [
+      'Free Draw',
+      'Coloring Garden',
+      'Learn to Draw',
+      'My Gallery',
+      'Animate Artwork',
+    ]) {
+      await tester.tap(find.text(destination).first);
+      await tester.pump(const Duration(milliseconds: 100));
+      expectNoChineseText();
+      await tester.tap(find.byKey(const ValueKey('app-page-back')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('Parents'));
+    await tester.pumpAndSettle();
+    expectNoChineseText();
+    await tester.tap(find.byKey(const ValueKey('parent-answer-19')));
+    await tester.pumpAndSettle();
+    expect(find.text('Display Language'), findsOneWidget);
+    expect(find.text('Follow System'), findsOneWidget);
+    expectNoChineseText();
   });
 
   testWidgets('guided lesson keeps progress and completes on iPad landscape', (
@@ -206,11 +294,7 @@ void main() {
     WidgetTester tester,
   ) async {
     final store = MemoryArtistStore(
-      preferences: {
-        'onboardingComplete': false,
-        'soundEnabled': false,
-        'musicEnabled': false,
-      },
+      preferences: {'onboardingComplete': false, 'soundEnabled': false},
     );
     await tester.pumpWidget(LittleArtistVerseApp(store: store));
     await tester.pumpAndSettle();

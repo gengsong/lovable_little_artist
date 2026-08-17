@@ -5,8 +5,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
+import 'package:lovable_little_artist/studio_localizations.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,16 +33,31 @@ void _ignoreStorageError(Future<void> operation) {
   unawaited(operation.catchError((Object _) {}));
 }
 
-class LittleArtistVerseApp extends StatelessWidget {
+class LittleArtistVerseApp extends StatefulWidget {
   const LittleArtistVerseApp({super.key, this.store});
 
   final ArtistStore? store;
 
   @override
+  State<LittleArtistVerseApp> createState() => _LittleArtistVerseAppState();
+}
+
+class _LittleArtistVerseAppState extends State<LittleArtistVerseApp> {
+  late final ArtistStore _store = widget.store ?? LocalArtistStore();
+  Locale? _locale;
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: '小小画室 Little Art Studio',
+      onGenerateTitle: (context) => context.tr('小小画室 Little Art Studio'),
+      locale: _locale,
+      supportedLocales: StudioLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: _bg,
@@ -53,7 +70,10 @@ class LittleArtistVerseApp extends StatelessWidget {
           displayColor: _ink,
         ),
       ),
-      home: StudioHome(store: store ?? LocalArtistStore()),
+      home: StudioHome(
+        store: _store,
+        onLocaleChanged: (locale) => setState(() => _locale = locale),
+      ),
     );
   }
 }
@@ -61,9 +81,14 @@ class LittleArtistVerseApp extends StatelessWidget {
 enum StudioTab { home, draw, coloring, lessons, gallery, animation, parent }
 
 class StudioHome extends StatefulWidget {
-  const StudioHome({super.key, required this.store});
+  const StudioHome({
+    super.key,
+    required this.store,
+    required this.onLocaleChanged,
+  });
 
   final ArtistStore store;
+  final ValueChanged<Locale?> onLocaleChanged;
 
   @override
   State<StudioHome> createState() => _StudioHomeState();
@@ -81,9 +106,9 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   int _streak = 0;
   int _creationStars = 0;
   bool _soundEnabled = true;
-  bool _musicEnabled = true;
   String _ageGroup = '4-6岁';
   String _difficulty = '入门';
+  String _localeMode = 'system';
   final artworks = <GalleryArtwork>[
     const GalleryArtwork(
       id: 'sun',
@@ -144,6 +169,13 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    if (_localeMode == 'system' && locales != null && locales.isNotEmpty) {
+      unawaited(_audio.setLanguage(locales.first.languageCode));
+    }
+  }
+
   Future<void> _restoreLocalState() async {
     final snapshot = await widget.store.load();
     if (!mounted) return;
@@ -160,17 +192,38 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
       _streak = (_preferences['creationStreak'] as num?)?.toInt() ?? 0;
       _creationStars = (_preferences['creationStars'] as num?)?.toInt() ?? 0;
       _soundEnabled = _preferences['soundEnabled'] as bool? ?? true;
-      _musicEnabled = _preferences['musicEnabled'] as bool? ?? true;
       _ageGroup = _preferences['ageGroup'] as String? ?? '4-6岁';
       _difficulty = _preferences['difficulty'] as String? ?? '入门';
+      _localeMode = _preferences['localeMode'] as String? ?? 'system';
       artworks.insertAll(0, snapshot.artworks.map(_galleryArtworkFromStored));
     });
+    widget.onLocaleChanged(
+      _localeMode == 'system' ? null : Locale(_localeMode),
+    );
     if (_preferences['onboardingComplete'] != true) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_showOnboarding());
       });
     }
-    await _audio.initialize(sound: _soundEnabled, music: _musicEnabled);
+    final languageCode = _localeMode == 'system'
+        ? WidgetsBinding.instance.platformDispatcher.locale.languageCode
+        : _localeMode;
+    await _audio.initialize(sound: _soundEnabled, languageCode: languageCode);
+  }
+
+  void _setLocaleMode(String mode) {
+    _localeMode = mode;
+    _savePreference('localeMode', mode);
+    widget.onLocaleChanged(mode == 'system' ? null : Locale(mode));
+    final languageCode = mode == 'system'
+        ? WidgetsBinding.instance.platformDispatcher.locale.languageCode
+        : mode;
+    unawaited(_audio.setLanguage(languageCode));
+  }
+
+  void _toggleLanguage(BuildContext context) {
+    final current = Localizations.localeOf(context).languageCode;
+    _setLocaleMode(current == 'zh' ? 'en' : 'zh');
   }
 
   int get _usageSeconds =>
@@ -392,6 +445,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             streak: _streak,
             creationStars: _creationStars,
             onOpen: (next) => setState(() => tab = next),
+            onLanguageToggle: () => _toggleLanguage(context),
           ),
           StudioTab.draw => DrawPage(
             onBack: () => setState(() => tab = StudioTab.home),
@@ -438,18 +492,13 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
                 )
                 .length,
             soundEnabled: _soundEnabled,
-            musicEnabled: _musicEnabled,
             ageGroup: _ageGroup,
             difficulty: _difficulty,
+            localeMode: _localeMode,
             onSoundChanged: (value) {
               _soundEnabled = value;
               _savePreference('soundEnabled', value);
               unawaited(_audio.setSoundEnabled(value));
-            },
-            onMusicChanged: (value) {
-              _musicEnabled = value;
-              _savePreference('musicEnabled', value);
-              unawaited(_audio.setMusicEnabled(value));
             },
             onAgeChanged: (value) {
               _ageGroup = value;
@@ -459,6 +508,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
               _difficulty = value;
               _savePreference('difficulty', value);
             },
+            onLocaleModeChanged: _setLocaleMode,
           ),
         };
 
@@ -477,6 +527,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
                   StudioRail(
                     selected: tab,
                     onSelect: (next) => setState(() => tab = next),
+                    onLanguageToggle: () => _toggleLanguage(context),
                   ),
                 Expanded(
                   child: Center(
@@ -498,10 +549,16 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
 }
 
 class StudioRail extends StatelessWidget {
-  const StudioRail({super.key, required this.selected, required this.onSelect});
+  const StudioRail({
+    super.key,
+    required this.selected,
+    required this.onSelect,
+    required this.onLanguageToggle,
+  });
 
   final StudioTab selected;
   final ValueChanged<StudioTab> onSelect;
+  final VoidCallback onLanguageToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -533,9 +590,9 @@ class StudioRail extends StatelessWidget {
           const Spacer(),
           NavPill(
             icon: Icons.translate_rounded,
-            label: 'EN',
+            label: context.languageToggleLabel,
             selected: false,
-            onTap: () {},
+            onTap: onLanguageToggle,
           ),
           NavPill(
             icon: Icons.verified_user_outlined,
@@ -582,12 +639,14 @@ class NavPill extends StatelessWidget {
             children: [
               Icon(icon, color: selected ? _orange : _brown, size: 28),
               const SizedBox(height: 4),
-              Text(
+              LocalizedText(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: selected ? _orange : _brown,
                   fontWeight: FontWeight.w900,
-                  fontSize: 12,
+                  fontSize: 10,
                 ),
               ),
             ],
@@ -639,7 +698,7 @@ class StudioBottomNav extends StatelessWidget {
             NavigationDestination(
               icon: Icon(item.$2, color: _brown),
               selectedIcon: Icon(item.$2, color: _orange),
-              label: item.$3,
+              label: context.tr(item.$3),
             ),
         ],
       ),
@@ -660,7 +719,7 @@ class _LittleArtistOnboardingState extends State<LittleArtistOnboarding> {
   static const _pages = [
     ('🎨', '欢迎来到小小画室', '自由画画、趣味涂色和分步课程，都可以离线使用。'),
     ('✨', '每次创作都有惊喜', '完成作品会获得创作星星，还能让自己的画跳舞、飞行和回放。'),
-    ('🛡️', '专为孩子安心设计', '没有广告和外部链接；声音、音乐、年龄推荐都由家长管理。'),
+    ('🛡️', '专为孩子安心设计', '没有广告和外部链接；语音提示、年龄推荐都由家长管理。'),
   ];
 
   @override
@@ -673,15 +732,15 @@ class _LittleArtistOnboardingState extends State<LittleArtistOnboarding> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(page.$1, style: const TextStyle(fontSize: 72)),
+            LocalizedText(page.$1, style: const TextStyle(fontSize: 72)),
             const SizedBox(height: 12),
-            Text(
+            LocalizedText(
               page.$2,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
-            Text(
+            LocalizedText(
               page.$3,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -714,7 +773,7 @@ class _LittleArtistOnboardingState extends State<LittleArtistOnboarding> {
         if (_page > 0)
           TextButton(
             onPressed: () => setState(() => _page--),
-            child: const Text('上一步'),
+            child: const LocalizedText('上一步'),
           ),
         FilledButton(
           key: const ValueKey('onboarding-next'),
@@ -725,7 +784,7 @@ class _LittleArtistOnboardingState extends State<LittleArtistOnboarding> {
               setState(() => _page++);
             }
           },
-          child: Text(_page == _pages.length - 1 ? '开始创作' : '下一步'),
+          child: LocalizedText(_page == _pages.length - 1 ? '开始创作' : '下一步'),
         ),
       ],
     );
@@ -739,12 +798,14 @@ class Dashboard extends StatelessWidget {
     required this.streak,
     required this.creationStars,
     required this.onOpen,
+    required this.onLanguageToggle,
   });
 
   final List<GalleryArtwork> artworks;
   final int streak;
   final int creationStars;
   final ValueChanged<StudioTab> onOpen;
+  final VoidCallback onLanguageToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -765,9 +826,10 @@ class Dashboard extends StatelessWidget {
                 streak: streak,
                 creationStars: creationStars,
                 onParent: () => onOpen(StudioTab.parent),
+                onLanguageToggle: onLanguageToggle,
               ),
               SizedBox(height: isTablet ? 30 : 42),
-              Text(
+              LocalizedText(
                 '今天想做什么？',
                 style: TextStyle(
                   fontSize: isTablet ? 22 : 34,
@@ -837,17 +899,20 @@ class Dashboard extends StatelessWidget {
               SizedBox(height: isTablet ? 32 : 34),
               Row(
                 children: [
-                  Text(
-                    '最近画的',
-                    style: TextStyle(
-                      fontSize: isTablet ? 21 : 32,
-                      fontWeight: FontWeight.w900,
+                  Expanded(
+                    child: LocalizedText(
+                      '最近画的',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isTablet ? 21 : 32,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   TextButton(
                     onPressed: () => onOpen(StudioTab.gallery),
-                    child: const Text(
+                    child: const LocalizedText(
                       '查看全部',
                       style: TextStyle(
                         color: _orange,
@@ -883,11 +948,13 @@ class HeroGreeting extends StatelessWidget {
     required this.streak,
     required this.creationStars,
     required this.onParent,
+    required this.onLanguageToggle,
   });
 
   final int streak;
   final int creationStars;
   final VoidCallback onParent;
+  final VoidCallback onLanguageToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -912,7 +979,7 @@ class HeroGreeting extends StatelessWidget {
               const CircleAvatar(
                 radius: 44,
                 backgroundColor: Color(0xFFFFDD78),
-                child: Text('🦊', style: TextStyle(fontSize: 38)),
+                child: LocalizedText('🦊', style: TextStyle(fontSize: 38)),
               ),
               Positioned(
                 right: -4,
@@ -931,7 +998,7 @@ class HeroGreeting extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                LocalizedText(
                   '你好，',
                   style: TextStyle(
                     color: _muted,
@@ -939,7 +1006,7 @@ class HeroGreeting extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                Text(
+                LocalizedText(
                   '米娅!',
                   style: TextStyle(
                     fontSize: 34,
@@ -958,7 +1025,7 @@ class HeroGreeting extends StatelessWidget {
                 color: _butter,
                 borderRadius: BorderRadius.circular(99),
               ),
-              child: Text(
+              child: LocalizedText(
                 '⭐ $creationStars · 🔥 $streak 天',
                 style: const TextStyle(
                   fontSize: 12,
@@ -974,11 +1041,11 @@ class HeroGreeting extends StatelessWidget {
               foregroundColor: _ink,
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             ),
-            onPressed: () {},
+            onPressed: onLanguageToggle,
             icon: const Icon(Icons.translate_rounded),
-            label: const Text(
-              'EN',
-              style: TextStyle(fontWeight: FontWeight.w900),
+            label: LocalizedText(
+              context.languageToggleLabel,
+              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
           const SizedBox(width: 12),
@@ -1030,59 +1097,72 @@ class ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(36),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(36),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 210;
+        return Material(
+          color: color,
+          borderRadius: BorderRadius.circular(36),
+          child: InkWell(
             borderRadius: BorderRadius.circular(36),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF6E5A45).withValues(alpha: .18),
-                blurRadius: 0,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              CircleAvatar(
-                radius: 31,
-                backgroundColor: Colors.white,
-                child: Icon(icon, color: iconColor, size: 32),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                      color: _ink,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      color: _muted,
-                      fontWeight: FontWeight.w800,
-                    ),
+            onTap: onTap,
+            child: Container(
+              padding: EdgeInsets.all(compact ? 16 : 24),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6E5A45).withValues(alpha: .18),
+                    blurRadius: 0,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CircleAvatar(
+                    radius: compact ? 22 : 31,
+                    backgroundColor: Colors.white,
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: compact ? 24 : 32,
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LocalizedText(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 18 : 25,
+                          fontWeight: FontWeight.w900,
+                          color: _ink,
+                        ),
+                      ),
+                      SizedBox(height: compact ? 2 : 5),
+                      LocalizedText(
+                        subtitle,
+                        maxLines: compact ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 12 : 17,
+                          color: _muted,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -1190,7 +1270,7 @@ class RecentCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          LocalizedText(
             artwork.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1642,22 +1722,22 @@ class _ColoringPageState extends State<ColoringPage> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          icon: const Text('🌟', style: TextStyle(fontSize: 48)),
-          title: const Text('太棒啦！'),
-          content: Text('「${_template.title}」已经保存到作品集，获得一颗创作星星！'),
+          icon: const LocalizedText('🌟', style: TextStyle(fontSize: 48)),
+          title: const LocalizedText('太棒啦！'),
+          content: LocalizedText('「${_template.title}」已经保存到作品集，获得一颗创作星星！'),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('继续创作'),
+              child: const LocalizedText('继续创作'),
             ),
           ],
         ),
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('保存失败，请检查设备存储空间')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: LocalizedText('保存失败，请检查设备存储空间')),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1772,7 +1852,7 @@ class ColoringTemplatePicker extends StatelessWidget {
         ),
         child: horizontal
             ? Center(
-                child: Text(
+                child: LocalizedText(
                   template.emoji,
                   style: const TextStyle(fontSize: 25),
                 ),
@@ -1780,10 +1860,13 @@ class ColoringTemplatePicker extends StatelessWidget {
             : Row(
                 children: [
                   const SizedBox(width: 10),
-                  Text(template.emoji, style: const TextStyle(fontSize: 28)),
+                  LocalizedText(
+                    template.emoji,
+                    style: const TextStyle(fontSize: 28),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: LocalizedText(
                       template.title,
                       style: const TextStyle(
                         fontSize: 13,
@@ -1812,7 +1895,7 @@ class ColoringTemplatePicker extends StatelessWidget {
             )
           : Column(
               children: [
-                const Text(
+                const LocalizedText(
                   '选一幅画',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
@@ -1909,13 +1992,13 @@ class ColoringPalette extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: saving ? null : onSave,
                   icon: const Icon(Icons.star_rounded),
-                  label: Text(saving ? '保存中' : '完成'),
+                  label: LocalizedText(saving ? '保存中' : '完成'),
                 ),
               ],
             )
           : Column(
               children: [
-                const Text(
+                const LocalizedText(
                   '选颜色',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
@@ -1941,7 +2024,7 @@ class ColoringPalette extends StatelessWidget {
                     key: const ValueKey('coloring-save'),
                     onPressed: saving ? null : onSave,
                     icon: const Icon(Icons.star_rounded),
-                    label: Text(saving ? '保存中…' : '完成作品'),
+                    label: LocalizedText(saving ? '保存中…' : '完成作品'),
                   ),
                 ),
               ],
@@ -2140,7 +2223,7 @@ class _DrawPageState extends State<DrawPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('已恢复上次自动保存的草稿'),
+              content: LocalizedText('已恢复上次自动保存的草稿'),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -2248,7 +2331,7 @@ class _DrawPageState extends State<DrawPage> {
     if (data == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('保存失败，请再试一次')));
+      ).showSnackBar(const SnackBar(content: LocalizedText('保存失败，请再试一次')));
       return;
     }
     final bytes = data.buffer.asUint8List(
@@ -2264,14 +2347,14 @@ class _DrawPageState extends State<DrawPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('保存失败，请检查设备存储空间')));
+      ).showSnackBar(const SnackBar(content: LocalizedText('保存失败，请检查设备存储空间')));
       return;
     }
     if (!mounted) return;
     final sizeKb = (data.lengthInBytes / 1024).round();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(sizeKb > 0 ? '已保存到作品集，约 $sizeKb KB' : '已保存到作品集'),
+        content: LocalizedText(sizeKb > 0 ? '已保存到作品集，约 $sizeKb KB' : '已保存到作品集'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -2666,7 +2749,7 @@ class ToolChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton.filledTonal(
-      tooltip: tooltip,
+      tooltip: context.tr(tooltip),
       isSelected: selected,
       onPressed: onTap,
       style: IconButton.styleFrom(
@@ -3148,7 +3231,7 @@ class LessonCatalog extends StatelessWidget {
                   const Icon(Icons.recommend_rounded, color: _orange),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: LocalizedText(
                       '已优先推荐 $ageGroup · $difficulty 课程',
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
@@ -3163,7 +3246,7 @@ class LessonCatalog extends StatelessWidget {
                 children: [
                   for (final item in categories) ...[
                     ChoiceChip(
-                      label: Text(item),
+                      label: LocalizedText(item),
                       selected: category == item,
                       selectedColor: _mint,
                       side: BorderSide.none,
@@ -3181,12 +3264,12 @@ class LessonCatalog extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                const Text(
+                const LocalizedText(
                   '挑一幅开始吧',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const Spacer(),
-                Text(
+                LocalizedText(
                   '${visibleLessons.length} 节课',
                   style: const TextStyle(
                     color: _muted,
@@ -3272,7 +3355,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                             color: Colors.white.withValues(alpha: .78),
                             borderRadius: BorderRadius.circular(99),
                           ),
-                          child: Text(
+                          child: LocalizedText(
                             '已完成 $completedLessons 幅',
                             style: const TextStyle(
                               fontSize: 12,
@@ -3282,7 +3365,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
+                        const LocalizedText(
                           '今天也要开心画画',
                           style: TextStyle(
                             color: _muted,
@@ -3292,7 +3375,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(
+                    LocalizedText(
                       hasProgress ? '继续画「${lesson.title}」' : '从一笔开始，画出大世界',
                       style: const TextStyle(
                         fontSize: 24,
@@ -3301,7 +3384,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    Text(
+                    LocalizedText(
                       hasProgress
                           ? '已经完成 $completedSteps / ${lesson.steps.length} 步，接着画吧！'
                           : '挑一幅喜欢的作品，我们一步一步来。',
@@ -3323,7 +3406,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                             ? Icons.play_arrow_rounded
                             : Icons.auto_awesome_rounded,
                       ),
-                      label: Text(
+                      label: LocalizedText(
                         hasProgress ? '继续第 ${completedSteps + 1} 步' : '开始第一课',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
@@ -3387,7 +3470,7 @@ class LessonCourseCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(26),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(13),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               Container(
@@ -3415,7 +3498,7 @@ class LessonCourseCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
+                          child: LocalizedText(
                             lesson.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -3433,7 +3516,7 @@ class LessonCourseCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text(
+                    LocalizedText(
                       lesson.subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -3445,48 +3528,58 @@ class LessonCourseCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.signal_cellular_alt_rounded,
-                          size: 15,
-                          color: _brown,
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '入门',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: _muted,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Icon(
-                          Icons.schedule_rounded,
-                          size: 15,
-                          color: _brown,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            lesson.duration,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: _muted,
+                    SizedBox(
+                      height: 18,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.signal_cellular_alt_rounded,
+                              size: 15,
+                              color: _brown,
                             ),
-                          ),
+                            const SizedBox(width: 4),
+                            LocalizedText(
+                              lesson.difficulty,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: _muted,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            const Icon(
+                              Icons.schedule_rounded,
+                              size: 15,
+                              color: _brown,
+                            ),
+                            const SizedBox(width: 4),
+                            LocalizedText(
+                              lesson.duration,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: _muted,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            LocalizedText(
+                              status,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                color: _orange,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          status,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: _orange,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 7),
                     ClipRRect(
@@ -3564,9 +3657,13 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   void _speakCurrentStep() {
     if (!widget.soundEnabled) return;
     final step = widget.lesson.steps[_stepIndex];
+    final stepLabel = context.tr(
+      '第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步',
+    );
     unawaited(
       widget.audio.speak(
-        '第 ${_stepIndex + 1} 步。${step.title}。${step.description}。${step.tip}',
+        '$stepLabel. ${context.tr(step.title)}. '
+        '${context.tr(step.description)}. ${context.tr(step.tip)}',
       ),
     );
   }
@@ -3677,16 +3774,16 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清空这张画吗？'),
-        content: const Text('清空后还可以用“撤销”找回来。'),
+        title: const LocalizedText('清空这张画吗？'),
+        content: const LocalizedText('清空后还可以用“撤销”找回来。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('继续画'),
+            child: const LocalizedText('继续画'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('清空'),
+            child: const LocalizedText('清空'),
           ),
         ],
       ),
@@ -3722,6 +3819,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
 
   Future<void> _completeLesson() async {
     if (_isCompleting) return;
+    final successMessage = context.tr('太棒啦，完成得真好！');
     setState(() => _isCompleting = true);
     var saved = false;
     try {
@@ -3734,7 +3832,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       await widget.store.deleteDraft(_draftKey);
       _suppressDraftSave = true;
       saved = true;
-      unawaited(widget.audio.success());
+      unawaited(widget.audio.success(successMessage));
     } catch (_) {
       saved = false;
     }
@@ -3745,19 +3843,19 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.auto_awesome_rounded, color: _orange, size: 48),
-        title: const Text('画好啦！'),
-        content: Text(
+        title: const LocalizedText('画好啦！'),
+        content: LocalizedText(
           saved ? '每一笔都很特别，作品已经自动保存到作品集啦！' : '课程已经完成，但作品保存失败，请检查设备存储空间。',
           textAlign: TextAlign.center,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'restart'),
-            child: const Text('再画一次'),
+            child: const LocalizedText('再画一次'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, 'catalog'),
-            child: const Text('返回课程'),
+            child: const LocalizedText('返回课程'),
           ),
         ],
       ),
@@ -3866,7 +3964,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                             color: _brown,
                           ),
                           const SizedBox(width: 5),
-                          const Text(
+                          const LocalizedText(
                             '显示提示',
                             style: TextStyle(
                               fontSize: 12,
@@ -3938,7 +4036,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                       button: true,
                       selected:
                           _color == item.$1 && _tool != DrawingTool.eraser,
-                      label: '选择${item.$2}',
+                      label: context.tr('选择${item.$2}'),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(99),
                         onTap: () => setState(() {
@@ -3978,7 +4076,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                   ),
                 ),
                 IconButton.filledTonal(
-                  tooltip: '清空画布',
+                  tooltip: context.tr('清空画布'),
                   onPressed: _strokes.isEmpty ? null : _confirmClear,
                   icon: const Icon(Icons.delete_outline_rounded),
                 ),
@@ -4020,7 +4118,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                   color: widget.lesson.color,
                   borderRadius: BorderRadius.circular(99),
                 ),
-                child: Text(
+                child: LocalizedText(
                   '第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步',
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
@@ -4031,7 +4129,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
               const Spacer(),
               IconButton.filledTonal(
                 key: const ValueKey('lesson-speak-step'),
-                tooltip: '朗读本步骤',
+                tooltip: context.tr('朗读本步骤'),
                 onPressed: widget.soundEnabled ? _speakCurrentStep : null,
                 icon: Icon(
                   widget.soundEnabled
@@ -4075,7 +4173,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  LocalizedText(
                     step.title,
                     style: const TextStyle(
                       fontSize: 22,
@@ -4084,7 +4182,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  Text(
+                  LocalizedText(
                     step.description,
                     style: const TextStyle(
                       fontSize: 15,
@@ -4111,7 +4209,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
+                          child: LocalizedText(
                             step.tip,
                             style: const TextStyle(
                               fontSize: 13,
@@ -4135,7 +4233,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                 key: const ValueKey('lesson-previous-step'),
                 onPressed: _stepIndex == 0 ? null : _previousStep,
                 icon: const Icon(Icons.arrow_back_rounded),
-                label: const Text('上一步'),
+                label: const LocalizedText('上一步'),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -4156,7 +4254,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                               ? Icons.celebration_rounded
                               : Icons.arrow_forward_rounded,
                         ),
-                  label: Text(
+                  label: LocalizedText(
                     _isCompleting ? '正在保存…' : (isLast ? '完成课程' : '下一步'),
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
@@ -4548,15 +4646,15 @@ class _GalleryPageState extends State<GalleryPage> {
     final title = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('给作品换个名字'),
+        title: const LocalizedText('给作品换个名字'),
         content: TextFormField(
           key: const ValueKey('gallery-rename-field'),
           initialValue: artwork.title,
           autofocus: true,
           maxLength: 20,
-          decoration: const InputDecoration(
-            labelText: '作品名称',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: context.tr('作品名称'),
+            border: const OutlineInputBorder(),
           ),
           onChanged: (value) => draftTitle = value,
           onFieldSubmitted: (value) => Navigator.pop(context, value),
@@ -4564,11 +4662,11 @@ class _GalleryPageState extends State<GalleryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: const LocalizedText('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, draftTitle),
-            child: const Text('保存名字'),
+            child: const LocalizedText('保存名字'),
           ),
         ],
       ),
@@ -4582,19 +4680,19 @@ class _GalleryPageState extends State<GalleryPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除这幅作品吗？'),
-        content: Text('「${artwork.title}」删除后无法恢复。'),
+        title: const LocalizedText('删除这幅作品吗？'),
+        content: LocalizedText('「${artwork.title}」删除后无法恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('保留作品'),
+            child: const LocalizedText('保留作品'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB33A2B),
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认删除'),
+            child: const LocalizedText('确认删除'),
           ),
         ],
       ),
@@ -4712,7 +4810,7 @@ class GalleryOverview extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
+                LocalizedText(
                   '${artworks.length} 幅作品',
                   style: const TextStyle(
                     color: _muted,
@@ -4772,7 +4870,7 @@ class GalleryFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChoiceChip(
       key: ValueKey('gallery-filter-$label'),
-      label: Text(label),
+      label: LocalizedText(label),
       avatar: Icon(
         filter == GalleryFilter.favorite
             ? Icons.favorite_rounded
@@ -4831,7 +4929,7 @@ class GalleryHero extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    const LocalizedText(
                       '米娅的小画展',
                       style: TextStyle(
                         fontSize: 25,
@@ -4840,7 +4938,7 @@ class GalleryHero extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    const LocalizedText(
                       '每一幅画，都是独一无二的小故事。',
                       style: TextStyle(
                         color: _muted,
@@ -4875,7 +4973,7 @@ class GalleryHero extends StatelessWidget {
                       ),
                       onPressed: onCreateNew,
                       icon: const Icon(Icons.add_rounded),
-                      label: const Text(
+                      label: const LocalizedText(
                         '画一幅新的',
                         style: TextStyle(fontWeight: FontWeight.w900),
                       ),
@@ -4946,7 +5044,7 @@ class GalleryStat extends StatelessWidget {
         children: [
           Icon(icon, color: _brown, size: 16),
           const SizedBox(width: 5),
-          Text(
+          LocalizedText(
             text,
             style: const TextStyle(
               fontSize: 12,
@@ -4995,7 +5093,9 @@ class GalleryArtworkCard extends StatelessWidget {
                       right: 7,
                       child: IconButton.filled(
                         key: ValueKey('gallery-favorite-${artwork.id}'),
-                        tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
+                        tooltip: context.tr(
+                          artwork.isFavorite ? '取消收藏' : '收藏作品',
+                        ),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.white.withValues(alpha: .92),
                           foregroundColor: artwork.isFavorite
@@ -5014,7 +5114,7 @@ class GalleryArtworkCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
+              LocalizedText(
                 artwork.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -5036,7 +5136,7 @@ class GalleryArtworkCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
+                    child: LocalizedText(
                       '${_artworkSourceLabel(artwork)} · ${artwork.createdLabel}',
                       style: const TextStyle(
                         fontSize: 12,
@@ -5139,7 +5239,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                       color: artwork.color,
                       borderRadius: BorderRadius.circular(99),
                     ),
-                    child: Text(
+                    child: LocalizedText(
                       artwork.isUserCreated ? '我的创作' : '画室示例',
                       style: const TextStyle(
                         fontSize: 12,
@@ -5151,7 +5251,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                   const Spacer(),
                   IconButton(
                     key: ValueKey('gallery-detail-favorite-${artwork.id}'),
-                    tooltip: artwork.isFavorite ? '取消收藏' : '收藏作品',
+                    tooltip: context.tr(artwork.isFavorite ? '取消收藏' : '收藏作品'),
                     onPressed: onFavorite,
                     icon: Icon(
                       artwork.isFavorite
@@ -5163,7 +5263,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
+              LocalizedText(
                 artwork.title,
                 style: const TextStyle(
                   fontSize: 29,
@@ -5173,7 +5273,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
+              LocalizedText(
                 '${artwork.createdLabel}完成',
                 style: const TextStyle(
                   color: _muted,
@@ -5193,7 +5293,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                     Icon(Icons.auto_awesome_rounded, color: _orange, size: 20),
                     SizedBox(width: 8),
                     Expanded(
-                      child: Text(
+                      child: LocalizedText(
                         '每一次创作都值得被好好收藏。给喜欢的作品点一颗爱心吧！',
                         style: TextStyle(
                           height: 1.4,
@@ -5206,7 +5306,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
+              const LocalizedText(
                 '作品信息',
                 style: TextStyle(
                   fontSize: 16,
@@ -5242,7 +5342,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                   ),
                   onPressed: onCreateNew,
                   icon: const Icon(Icons.brush_rounded),
-                  label: const Text(
+                  label: const LocalizedText(
                     '再画一幅',
                     style: TextStyle(fontWeight: FontWeight.w900),
                   ),
@@ -5258,7 +5358,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                           key: const ValueKey('gallery-rename'),
                           onPressed: onRename,
                           icon: const Icon(Icons.edit_rounded),
-                          label: const Text('重命名'),
+                          label: const LocalizedText('重命名'),
                         ),
                       ),
                     if (onRename != null && onDelete != null)
@@ -5272,7 +5372,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                           ),
                           onPressed: onDelete,
                           icon: const Icon(Icons.delete_outline_rounded),
-                          label: const Text('删除'),
+                          label: const LocalizedText('删除'),
                         ),
                       ),
                   ],
@@ -5321,7 +5421,7 @@ class GalleryInfoRow extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: _brown),
         const SizedBox(width: 8),
-        Text(
+        LocalizedText(
           label,
           style: const TextStyle(
             fontSize: 13,
@@ -5330,7 +5430,7 @@ class GalleryInfoRow extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        Text(
+        LocalizedText(
           value,
           style: const TextStyle(
             fontSize: 13,
@@ -5373,7 +5473,7 @@ class GalleryEmptyState extends StatelessWidget {
             color: _brown,
           ),
           const SizedBox(height: 12),
-          Text(
+          LocalizedText(
             isFavorite ? '还没有收藏作品' : '作品集还是空的',
             style: const TextStyle(
               fontSize: 21,
@@ -5382,7 +5482,7 @@ class GalleryEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
+          LocalizedText(
             isFavorite ? '看到喜欢的作品，就点亮右上角的爱心。' : '去画板完成第一幅作品吧！',
             textAlign: TextAlign.center,
             style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
@@ -5392,7 +5492,7 @@ class GalleryEmptyState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onCreateNew,
               icon: const Icon(Icons.brush_rounded),
-              label: const Text('开始画画'),
+              label: const LocalizedText('开始画画'),
             ),
         ],
       ),
@@ -5520,7 +5620,7 @@ class _AnimationPageState extends State<AnimationPage>
                 const Positioned(
                   top: 28,
                   left: 36,
-                  child: Text(
+                  child: LocalizedText(
                     '✦',
                     style: TextStyle(fontSize: 35, color: _orange),
                   ),
@@ -5528,7 +5628,7 @@ class _AnimationPageState extends State<AnimationPage>
                 const Positioned(
                   bottom: 34,
                   right: 42,
-                  child: Text(
+                  child: LocalizedText(
                     '✧',
                     style: TextStyle(fontSize: 46, color: Color(0xFF8C63E8)),
                   ),
@@ -5545,7 +5645,9 @@ class _AnimationPageState extends State<AnimationPage>
                   top: 14,
                   child: IconButton.filled(
                     key: const ValueKey('animation-play-toggle'),
-                    tooltip: _controller.isAnimating ? '暂停动画' : '播放动画',
+                    tooltip: context.tr(
+                      _controller.isAnimating ? '暂停动画' : '播放动画',
+                    ),
                     onPressed: () => setState(() {
                       if (_controller.isAnimating) {
                         _controller.stop();
@@ -5571,7 +5673,7 @@ class _AnimationPageState extends State<AnimationPage>
             ),
             child: ListView(
               children: [
-                const Text(
+                const LocalizedText(
                   '选择一幅作品',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                 ),
@@ -5606,7 +5708,7 @@ class _AnimationPageState extends State<AnimationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                const LocalizedText(
                   '选择动画',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                 ),
@@ -5619,7 +5721,7 @@ class _AnimationPageState extends State<AnimationPage>
                       selected: _motion == motion,
                       selectedColor: _rose,
                       avatar: Icon(motion.icon, size: 19),
-                      label: Text(motion.label),
+                      label: LocalizedText(motion.label),
                       onSelected: (_) {
                         setState(() => _motion = motion);
                         _controller.repeat(period: _controller.duration);
@@ -5718,13 +5820,13 @@ class ParentPage extends StatefulWidget {
     required this.favoriteCount,
     required this.completedLessons,
     required this.soundEnabled,
-    required this.musicEnabled,
     required this.ageGroup,
     required this.difficulty,
+    required this.localeMode,
     required this.onSoundChanged,
-    required this.onMusicChanged,
     required this.onAgeChanged,
     required this.onDifficultyChanged,
+    required this.onLocaleModeChanged,
   });
 
   final VoidCallback onBack;
@@ -5733,13 +5835,13 @@ class ParentPage extends StatefulWidget {
   final int favoriteCount;
   final int completedLessons;
   final bool soundEnabled;
-  final bool musicEnabled;
   final String ageGroup;
   final String difficulty;
+  final String localeMode;
   final ValueChanged<bool> onSoundChanged;
-  final ValueChanged<bool> onMusicChanged;
   final ValueChanged<String> onAgeChanged;
   final ValueChanged<String> onDifficultyChanged;
+  final ValueChanged<String> onLocaleModeChanged;
 
   @override
   State<ParentPage> createState() => _ParentPageState();
@@ -5775,12 +5877,12 @@ class _ParentPageState extends State<ParentPage> {
         children: [
           const Icon(Icons.verified_user_rounded, size: 54, color: _brown),
           const SizedBox(height: 14),
-          const Text(
+          const LocalizedText(
             '请家长回答',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 6),
-          const Text(
+          const LocalizedText(
             '12 + 7 等于多少？',
             style: TextStyle(color: _muted, fontSize: 16),
           ),
@@ -5796,11 +5898,11 @@ class _ParentPageState extends State<ParentPage> {
                       setState(() => _verified = true);
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('答案不对，请再想一想')),
+                        const SnackBar(content: LocalizedText('答案不对，请再想一想')),
                       );
                     }
                   },
-                  child: Text('$answer'),
+                  child: LocalizedText('$answer'),
                 ),
                 const SizedBox(width: 10),
               ],
@@ -5829,7 +5931,7 @@ class _ParentPageState extends State<ParentPage> {
           ),
           ParentStat(
             icon: Icons.menu_book_rounded,
-            label: '完成课程',
+            label: '课程完成数',
             value: '${widget.completedLessons} 节',
           ),
           ParentStat(
@@ -5848,26 +5950,41 @@ class _ParentPageState extends State<ParentPage> {
           child: Column(
             children: [
               SwitchListTile(
-                title: const Text(
+                title: const LocalizedText(
                   '语音提示与音效',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: const Text('课程朗读、点击声和完成鼓励'),
+                subtitle: const LocalizedText('课程朗读、点击声和完成鼓励'),
                 value: widget.soundEnabled,
                 onChanged: widget.onSoundChanged,
               ),
-              SwitchListTile(
-                title: const Text(
-                  '舒缓背景音乐',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                subtitle: const Text('绘画时循环播放，可随时关闭'),
-                value: widget.musicEnabled,
-                onChanged: widget.onMusicChanged,
-              ),
               const Divider(),
               ListTile(
-                title: const Text(
+                title: const LocalizedText(
+                  '显示语言',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                trailing: DropdownButton<String>(
+                  key: const ValueKey('parent-language-mode'),
+                  value: widget.localeMode,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'system',
+                      child: LocalizedText('跟随系统'),
+                    ),
+                    DropdownMenuItem(value: 'zh', child: LocalizedText('简体中文')),
+                    DropdownMenuItem(
+                      value: 'en',
+                      child: LocalizedText('English'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) widget.onLocaleModeChanged(value);
+                  },
+                ),
+              ),
+              ListTile(
+                title: const LocalizedText(
                   '推荐年龄',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
@@ -5875,8 +5992,10 @@ class _ParentPageState extends State<ParentPage> {
                   value: widget.ageGroup,
                   items: ['2-4岁', '4-6岁', '6-8岁']
                       .map(
-                        (value) =>
-                            DropdownMenuItem(value: value, child: Text(value)),
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: LocalizedText(value),
+                        ),
                       )
                       .toList(),
                   onChanged: (value) {
@@ -5885,7 +6004,7 @@ class _ParentPageState extends State<ParentPage> {
                 ),
               ),
               ListTile(
-                title: const Text(
+                title: const LocalizedText(
                   '课程难度',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
@@ -5893,8 +6012,10 @@ class _ParentPageState extends State<ParentPage> {
                   value: widget.difficulty,
                   items: ['入门', '进阶', '挑战']
                       .map(
-                        (value) =>
-                            DropdownMenuItem(value: value, child: Text(value)),
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: LocalizedText(value),
+                        ),
                       )
                       .toList(),
                   onChanged: (value) {
@@ -5937,7 +6058,7 @@ class ParentStat extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              LocalizedText(
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -5946,7 +6067,7 @@ class ParentStat extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              Text(
+              LocalizedText(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -5987,7 +6108,7 @@ class AppPage extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
+                child: LocalizedText(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
