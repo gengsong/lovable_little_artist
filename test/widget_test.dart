@@ -477,4 +477,61 @@ void main() {
     expect(find.text('彩虹花园'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('saved free artwork can be edited and saved as a copy', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(const ValueKey('free-drawing-canvas')),
+      const Offset(90, 45),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('保存预览'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+    expect((await store.load()).artworks, hasLength(1));
+
+    await tester.tap(find.text('作品集'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的画作 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gallery-continue-edit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('继续画「我的画作 1」'), findsOneWidget);
+    expect(find.byTooltip('更新原作品'), findsOneWidget);
+    expect(find.byTooltip('另存一份'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('free-drawing-canvas')),
+      const Offset(-60, 55),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('更新原作品'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+    expect((await store.load()).artworks, hasLength(1));
+
+    await tester.tap(find.byTooltip('另存一份'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+    expect((await store.load()).artworks, hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
 }

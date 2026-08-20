@@ -104,6 +104,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   String _ageGroup = '4-6岁';
   String _difficulty = '入门';
   String _localeMode = 'system';
+  GalleryArtwork? _editingArtwork;
   final artworks = <GalleryArtwork>[
     const GalleryArtwork(
       id: 'sun',
@@ -302,6 +303,44 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
     _recordCreation(now);
   }
 
+  Future<void> _updateArtworkDrawing(
+    GalleryArtwork original,
+    Uint8List pngBytes,
+    Map<String, Object?> replayData,
+  ) async {
+    final index = artworks.indexWhere((artwork) => artwork.id == original.id);
+    if (index < 0) return _addArtwork(pngBytes, replayData);
+    final current = artworks[index];
+    final updated = GalleryArtwork(
+      id: current.id,
+      title: current.title,
+      createdLabel: '刚刚',
+      createdAt: DateTime.now(),
+      color: current.color,
+      kind: current.kind,
+      pngBytes: pngBytes,
+      isFavorite: current.isFavorite,
+      isUserCreated: current.isUserCreated,
+      source: current.source,
+      lessonId: current.lessonId,
+      replayData: replayData,
+    );
+    await widget.store.updateArtwork(_storedArtworkFromGallery(updated));
+    if (!mounted) return;
+    setState(() {
+      artworks[index] = updated;
+      _editingArtwork = updated;
+    });
+  }
+
+  void _editArtwork(GalleryArtwork artwork) {
+    if (artwork.source != 'free' || artwork.replayData == null) return;
+    setState(() {
+      _editingArtwork = artwork;
+      tab = StudioTab.draw;
+    });
+  }
+
   Future<void> _addColoringArtwork(
     String templateTitle,
     Uint8List pngBytes,
@@ -439,13 +478,18 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             artworks: artworks,
             streak: _streak,
             creationStars: _creationStars,
-            onOpen: (next) => setState(() => tab = next),
+            onOpen: (next) => setState(() {
+              if (next == StudioTab.draw) _editingArtwork = null;
+              tab = next;
+            }),
             onLanguageToggle: () => _toggleLanguage(context),
           ),
           StudioTab.draw => DrawPage(
             onBack: () => setState(() => tab = StudioTab.home),
             onSaved: _addArtwork,
+            onUpdated: _updateArtworkDrawing,
             store: widget.store,
+            editingArtwork: _editingArtwork,
           ),
           StudioTab.coloring => ColoringPage(
             onBack: () => setState(() => tab = StudioTab.home),
@@ -465,7 +509,11 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
           StudioTab.gallery => GalleryPage(
             artworks: artworks,
             onBack: () => setState(() => tab = StudioTab.home),
-            onCreateNew: () => setState(() => tab = StudioTab.draw),
+            onCreateNew: () => setState(() {
+              _editingArtwork = null;
+              tab = StudioTab.draw;
+            }),
+            onEditArtwork: _editArtwork,
             onToggleFavorite: _toggleArtworkFavorite,
             onRename: _renameArtwork,
             onDelete: _deleteArtwork,
@@ -513,7 +561,10 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
               ? null
               : StudioBottomNav(
                   selected: tab,
-                  onSelect: (next) => setState(() => tab = next),
+                  onSelect: (next) => setState(() {
+                    if (next == StudioTab.draw) _editingArtwork = null;
+                    tab = next;
+                  }),
                 ),
           body: StoryScaffoldBackdrop(
             child: SafeArea(
@@ -522,7 +573,10 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
                   if (isTablet)
                     StudioRail(
                       selected: tab,
-                      onSelect: (next) => setState(() => tab = next),
+                      onSelect: (next) => setState(() {
+                        if (next == StudioTab.draw) _editingArtwork = null;
+                        tab = next;
+                      }),
                       onLanguageToggle: () => _toggleLanguage(context),
                     ),
                   Expanded(
@@ -2481,11 +2535,20 @@ class DrawPage extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.onSaved,
+    required this.onUpdated,
     required this.store,
+    this.editingArtwork,
   });
   final VoidCallback onBack;
   final Future<void> Function(Uint8List, Map<String, Object?>) onSaved;
+  final Future<void> Function(
+    GalleryArtwork artwork,
+    Uint8List pngBytes,
+    Map<String, Object?> replayData,
+  )
+  onUpdated;
   final ArtistStore store;
+  final GalleryArtwork? editingArtwork;
 
   @override
   State<DrawPage> createState() => _DrawPageState();
@@ -2493,18 +2556,26 @@ class DrawPage extends StatefulWidget {
 
 class _DrawPageState extends State<DrawPage> {
   final _canvasKey = GlobalKey();
+  final _transformController = TransformationController();
   final _strokes = <DrawingStroke>[];
   final _redoStack = <DrawingStroke>[];
+  final _activePointers = <int, Offset>{};
   DrawingStroke? _activeStroke;
   int? _activePointer;
   DrawingTool _tool = DrawingTool.crayon;
   Color _color = _orange;
   double _width = AppConstants.defaultStrokeWidth;
+  DrawSaveStatus _saveStatus = DrawSaveStatus.idle;
   Timer? _autosaveTimer;
+  Timer? _savedIndicatorTimer;
   bool _draftRestored = false;
 
   bool get _canUndo => _strokes.isNotEmpty;
   bool get _canRedo => _redoStack.isNotEmpty;
+  bool get _isEditing => widget.editingArtwork != null;
+  String get _draftKey => _isEditing
+      ? 'free-drawing-edit-${widget.editingArtwork!.id}'
+      : 'free-drawing';
 
   @override
   void initState() {
@@ -2515,12 +2586,24 @@ class _DrawPageState extends State<DrawPage> {
   @override
   void dispose() {
     _autosaveTimer?.cancel();
+    _savedIndicatorTimer?.cancel();
+    _transformController.dispose();
     if (_strokes.isNotEmpty) _ignoreStorageError(_persistDraft());
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant DrawPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.editingArtwork?.id != widget.editingArtwork?.id) {
+      _restoreDraft();
+    }
+  }
+
   Future<void> _restoreDraft() async {
-    final draft = await widget.store.loadDraft('free-drawing');
+    final draft =
+        await widget.store.loadDraft(_draftKey) ??
+        widget.editingArtwork?.replayData;
     if (!mounted) return;
     final restored = _strokesFromDraft(draft);
     setState(() {
@@ -2545,22 +2628,45 @@ class _DrawPageState extends State<DrawPage> {
 
   void _scheduleAutosave() {
     _autosaveTimer?.cancel();
+    _setSaveStatus(DrawSaveStatus.saving);
     _autosaveTimer = Timer(AppConstants.autosaveDelay, _persistDraft);
   }
 
   Future<void> _persistDraft() async {
     try {
       if (_strokes.isEmpty) {
-        await widget.store.deleteDraft('free-drawing');
+        await widget.store.deleteDraft(_draftKey);
+        _setSaveStatus(DrawSaveStatus.idle);
         return;
       }
-      await widget.store.saveDraft('free-drawing', _draftFromStrokes(_strokes));
+      await widget.store.saveDraft(_draftKey, _draftFromStrokes(_strokes));
+      _setSaveStatus(DrawSaveStatus.saved);
     } catch (_) {
-      // A failed autosave must never interrupt drawing.
+      _setSaveStatus(DrawSaveStatus.error);
+    }
+  }
+
+  void _setSaveStatus(DrawSaveStatus status) {
+    if (!mounted) return;
+    _savedIndicatorTimer?.cancel();
+    setState(() => _saveStatus = status);
+    if (status == DrawSaveStatus.saved) {
+      _savedIndicatorTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted && _saveStatus == DrawSaveStatus.saved) {
+          setState(() => _saveStatus = DrawSaveStatus.idle);
+        }
+      });
     }
   }
 
   void _startStroke(PointerDownEvent event) {
+    if (_isPalmTouch(event)) return;
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1) {
+      _activePointer = null;
+      _activeStroke = null;
+      return;
+    }
     if (_activePointer != null) return;
     final stroke = DrawingStroke(
       tool: _tool,
@@ -2583,19 +2689,49 @@ class _DrawPageState extends State<DrawPage> {
   }
 
   void _extendStroke(PointerMoveEvent event) {
-    if (event.pointer != _activePointer || _tool.isDiscrete) return;
-    setState(() {
-      _activeStroke?.points.add(
-        DrawingPoint(event.localPosition, _pressure(event)),
-      );
-    });
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1 ||
+        event.pointer != _activePointer ||
+        _tool.isDiscrete) {
+      return;
+    }
+    final point = DrawingPoint(event.localPosition, _pressure(event));
+    final stroke = _activeStroke;
+    if (stroke == null || !_shouldAppendPoint(stroke, point, event.kind)) {
+      return;
+    }
+    setState(() => stroke.points.add(point));
   }
 
   void _endStroke(PointerEvent event) {
+    _activePointers.remove(event.pointer);
     if (event.pointer != _activePointer) return;
     _activePointer = null;
     _activeStroke = null;
     _scheduleAutosave();
+  }
+
+  bool _isPalmTouch(PointerDownEvent event) {
+    if (event.kind == ui.PointerDeviceKind.stylus ||
+        event.kind == ui.PointerDeviceKind.invertedStylus) {
+      return false;
+    }
+    return event.radiusMajor >= 30 || event.radiusMinor >= 24;
+  }
+
+  bool _shouldAppendPoint(
+    DrawingStroke stroke,
+    DrawingPoint point,
+    ui.PointerDeviceKind kind,
+  ) {
+    if (stroke.points.isEmpty) return true;
+    final last = stroke.points.last.offset;
+    final minDistance =
+        kind == ui.PointerDeviceKind.stylus ||
+            kind == ui.PointerDeviceKind.invertedStylus
+        ? math.max(.8, stroke.baseWidth * .08)
+        : math.max(1.5, stroke.baseWidth * .14);
+    return (point.offset - last).distance >= minDistance;
   }
 
   double _pressure(PointerEvent event) {
@@ -2634,7 +2770,7 @@ class _DrawPageState extends State<DrawPage> {
     _scheduleAutosave();
   }
 
-  Future<void> _savePreview() async {
+  Future<void> _savePreview({bool saveAsCopy = false}) async {
     if (_strokes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2663,10 +2799,13 @@ class _DrawPageState extends State<DrawPage> {
       data.lengthInBytes,
     );
     try {
-      await widget.onSaved(
-        bytes,
-        _draftFromStrokes(_strokes, canvasSize: boundary.size),
-      );
+      final replayData = _draftFromStrokes(_strokes, canvasSize: boundary.size);
+      if (_isEditing && !saveAsCopy) {
+        await widget.onUpdated(widget.editingArtwork!, bytes, replayData);
+      } else {
+        await widget.onSaved(bytes, replayData);
+      }
+      await widget.store.deleteDraft(_draftKey);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -2678,7 +2817,13 @@ class _DrawPageState extends State<DrawPage> {
     final sizeKb = (data.lengthInBytes / 1024).round();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: LocalizedText(sizeKb > 0 ? '已保存到作品集，约 $sizeKb KB' : '已保存到作品集'),
+        content: LocalizedText(
+          _isEditing && !saveAsCopy
+              ? '已更新原作品'
+              : sizeKb > 0
+              ? '已保存到作品集，约 $sizeKb KB'
+              : '已保存到作品集',
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -2695,7 +2840,7 @@ class _DrawPageState extends State<DrawPage> {
       const Color(0xFF3A1D10),
     ];
     return AppPage(
-      title: '自由画画',
+      title: _isEditing ? '继续画「${widget.editingArtwork!.title}」' : '自由画画',
       onBack: widget.onBack,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -2707,6 +2852,7 @@ class _DrawPageState extends State<DrawPage> {
             colors: colors,
             canUndo: _canUndo,
             canRedo: _canRedo,
+            isEditing: _isEditing,
             onTool: (tool) => setState(() => _tool = tool),
             onColor: (color) => setState(() {
               _color = color;
@@ -2716,10 +2862,11 @@ class _DrawPageState extends State<DrawPage> {
             onUndo: _undo,
             onRedo: _redo,
             onClear: _clear,
-            onSave: _savePreview,
+            onSave: () => _savePreview(),
+            onSaveAs: _isEditing ? () => _savePreview(saveAsCopy: true) : null,
           );
 
-          final canvas = RepaintBoundary(
+          final drawingSurface = RepaintBoundary(
             key: _canvasKey,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
@@ -2743,6 +2890,29 @@ class _DrawPageState extends State<DrawPage> {
               ),
             ),
           );
+          final canvas = Stack(
+            children: [
+              Positioned.fill(
+                child: InteractiveViewer(
+                  transformationController: _transformController,
+                  boundaryMargin: const EdgeInsets.all(520),
+                  minScale: .58,
+                  maxScale: 3.2,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  child: drawingSurface,
+                ),
+              ),
+              Positioned(
+                left: 16,
+                top: 16,
+                child: DrawStatusPill(
+                  status: _saveStatus,
+                  isEditing: _isEditing,
+                ),
+              ),
+            ],
+          );
 
           return Flex(
             direction: isWide ? Axis.horizontal : Axis.vertical,
@@ -2760,7 +2930,9 @@ class _DrawPageState extends State<DrawPage> {
 
 enum DrawingTool {
   crayon,
+  watercolor,
   marker,
+  pencil,
   glow,
   eraser,
   spray,
@@ -2775,6 +2947,62 @@ extension DrawingToolBehavior on DrawingTool {
       this == DrawingTool.stamp ||
       this == DrawingTool.sticker ||
       this == DrawingTool.fill;
+}
+
+enum DrawSaveStatus { idle, saving, saved, error }
+
+class DrawStatusPill extends StatelessWidget {
+  const DrawStatusPill({
+    super.key,
+    required this.status,
+    required this.isEditing,
+  });
+
+  final DrawSaveStatus status;
+  final bool isEditing;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (status) {
+      DrawSaveStatus.saving => '自动保存中…',
+      DrawSaveStatus.saved => '已自动保存',
+      DrawSaveStatus.error => '自动保存失败',
+      DrawSaveStatus.idle => isEditing ? '编辑中' : '自动保存已开启',
+    };
+    final color = switch (status) {
+      DrawSaveStatus.saving => _butter,
+      DrawSaveStatus.saved => _mint,
+      DrawSaveStatus.error => const Color(0xFFFFE1DC),
+      DrawSaveStatus.idle => Colors.white.withValues(alpha: .86),
+    };
+    final icon = switch (status) {
+      DrawSaveStatus.saving => Icons.sync_rounded,
+      DrawSaveStatus.saved => Icons.check_circle_rounded,
+      DrawSaveStatus.error => Icons.error_rounded,
+      DrawSaveStatus.idle => Icons.cloud_done_rounded,
+    };
+    return StoryPaper(
+      color: color,
+      borderRadius: 99,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      shadow: false,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: _brown),
+          const SizedBox(width: 6),
+          LocalizedText(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: _ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class DrawingPoint {
@@ -2879,6 +3107,7 @@ class DrawingToolPanel extends StatelessWidget {
     required this.colors,
     required this.canUndo,
     required this.canRedo,
+    required this.isEditing,
     required this.onTool,
     required this.onColor,
     required this.onWidth,
@@ -2886,6 +3115,7 @@ class DrawingToolPanel extends StatelessWidget {
     required this.onRedo,
     required this.onClear,
     required this.onSave,
+    this.onSaveAs,
   });
 
   final DrawingTool tool;
@@ -2894,6 +3124,7 @@ class DrawingToolPanel extends StatelessWidget {
   final List<Color> colors;
   final bool canUndo;
   final bool canRedo;
+  final bool isEditing;
   final ValueChanged<DrawingTool> onTool;
   final ValueChanged<Color> onColor;
   final ValueChanged<double> onWidth;
@@ -2901,6 +3132,7 @@ class DrawingToolPanel extends StatelessWidget {
   final VoidCallback onRedo;
   final VoidCallback onClear;
   final VoidCallback onSave;
+  final VoidCallback? onSaveAs;
 
   @override
   Widget build(BuildContext context) {
@@ -2936,10 +3168,22 @@ class DrawingToolPanel extends StatelessWidget {
                     tooltip: '蜡笔',
                   ),
                   ToolChip(
-                    icon: Icons.brush_rounded,
+                    icon: Icons.water_drop_rounded,
+                    selected: tool == DrawingTool.watercolor,
+                    onTap: () => onTool(DrawingTool.watercolor),
+                    tooltip: '水彩',
+                  ),
+                  ToolChip(
+                    icon: Icons.colorize_rounded,
                     selected: tool == DrawingTool.marker,
                     onTap: () => onTool(DrawingTool.marker),
-                    tooltip: '画笔',
+                    tooltip: '马克笔',
+                  ),
+                  ToolChip(
+                    icon: Icons.edit_note_rounded,
+                    selected: tool == DrawingTool.pencil,
+                    onTap: () => onTool(DrawingTool.pencil),
+                    tooltip: '铅笔',
                   ),
                   ToolChip(
                     icon: Icons.auto_awesome_rounded,
@@ -3005,8 +3249,15 @@ class DrawingToolPanel extends StatelessWidget {
                     icon: Icons.save_rounded,
                     selected: false,
                     onTap: onSave,
-                    tooltip: '保存预览',
+                    tooltip: isEditing ? '更新原作品' : '保存预览',
                   ),
+                  if (onSaveAs != null)
+                    ToolChip(
+                      icon: Icons.copy_rounded,
+                      selected: false,
+                      onTap: onSaveAs,
+                      tooltip: '另存一份',
+                    ),
                 ],
               ),
               SizedBox(width: horizontal ? 14 : 0, height: horizontal ? 0 : 12),
@@ -3124,6 +3375,18 @@ class NativeCanvasPainter extends CustomPainter {
         _drawSticker(canvas, stroke);
         continue;
       }
+      if (stroke.tool == DrawingTool.crayon) {
+        _drawCrayon(canvas, stroke);
+        continue;
+      }
+      if (stroke.tool == DrawingTool.watercolor) {
+        _drawWatercolor(canvas, stroke);
+        continue;
+      }
+      if (stroke.tool == DrawingTool.pencil) {
+        _drawPencil(canvas, stroke);
+        continue;
+      }
       final paint = Paint()
         ..color = stroke.color
         ..strokeCap = StrokeCap.round
@@ -3154,6 +3417,121 @@ class NativeCanvasPainter extends CustomPainter {
         pressureAware: stroke.tool != DrawingTool.eraser,
       );
     }
+  }
+
+  void _drawCrayon(Canvas canvas, DrawingStroke stroke) {
+    final base = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..color = stroke.color.withValues(alpha: .72)
+      ..strokeWidth = stroke.baseWidth;
+    _drawStroke(canvas, stroke, base, pressureAware: true);
+
+    final grainPaint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    for (var pass = 0; pass < 3; pass++) {
+      final shifted = DrawingStroke(
+        tool: stroke.tool,
+        color: stroke.color,
+        baseWidth: math.max(1.2, stroke.baseWidth * (.28 + pass * .08)),
+        points: [
+          for (var i = 0; i < stroke.points.length; i++)
+            DrawingPoint(
+              stroke.points[i].offset +
+                  _grainOffset(i + pass * 17, stroke.baseWidth * .32),
+              stroke.points[i].pressure,
+            ),
+        ],
+      );
+      grainPaint
+        ..color = stroke.color.withValues(alpha: pass == 0 ? .26 : .18)
+        ..strokeWidth = shifted.baseWidth;
+      _drawStroke(canvas, shifted, grainPaint, pressureAware: true);
+    }
+
+    final fleck = Paint()..color = Colors.white.withValues(alpha: .18);
+    for (var i = 0; i < stroke.points.length; i += 3) {
+      final point = stroke.points[i].offset;
+      final seed = i * 92821 + point.dx.round() * 31 + point.dy.round();
+      final random = math.Random(seed);
+      canvas.drawCircle(
+        point +
+            Offset(random.nextDouble() - .5, random.nextDouble() - .5) *
+                stroke.baseWidth,
+        math.max(.7, stroke.baseWidth * .06),
+        fleck,
+      );
+    }
+  }
+
+  void _drawWatercolor(Canvas canvas, DrawingStroke stroke) {
+    final bloom = Paint()
+      ..color = stroke.color.withValues(alpha: .18)
+      ..strokeWidth = stroke.baseWidth * 2.35
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    _drawStroke(canvas, stroke, bloom, pressureAware: true);
+
+    final wash = Paint()
+      ..color = stroke.color.withValues(alpha: .38)
+      ..strokeWidth = stroke.baseWidth * 1.16
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    _drawStroke(canvas, stroke, wash, pressureAware: true);
+
+    final edge = Paint()
+      ..color = stroke.color.withValues(alpha: .22)
+      ..strokeWidth = math.max(1.0, stroke.baseWidth * .28)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    _drawStroke(canvas, stroke, edge, pressureAware: false);
+  }
+
+  void _drawPencil(Canvas canvas, DrawingStroke stroke) {
+    final graphite = Paint()
+      ..color = stroke.color.withValues(alpha: .68)
+      ..strokeWidth = math.max(1.0, stroke.baseWidth * .42)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    _drawStroke(canvas, stroke, graphite, pressureAware: true);
+
+    final scratch = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    for (var pass = 0; pass < 2; pass++) {
+      final shifted = DrawingStroke(
+        tool: stroke.tool,
+        color: stroke.color,
+        baseWidth: math.max(.8, stroke.baseWidth * .16),
+        points: [
+          for (var i = 0; i < stroke.points.length; i++)
+            DrawingPoint(
+              stroke.points[i].offset +
+                  _grainOffset(i + pass * 29, stroke.baseWidth * .18),
+              stroke.points[i].pressure,
+            ),
+        ],
+      );
+      scratch
+        ..color = stroke.color.withValues(alpha: .24)
+        ..strokeWidth = shifted.baseWidth;
+      _drawStroke(canvas, shifted, scratch, pressureAware: true);
+    }
+  }
+
+  Offset _grainOffset(int seed, double radius) {
+    final angle = ((seed * 37) % 360) * math.pi / 180;
+    final distance = radius * (.35 + ((seed * 19) % 100) / 100);
+    return Offset(math.cos(angle), math.sin(angle)) * distance;
   }
 
   void _drawSpray(Canvas canvas, DrawingStroke stroke) {
@@ -5053,6 +5431,7 @@ class GalleryPage extends StatefulWidget {
     required this.artworks,
     required this.onBack,
     required this.onCreateNew,
+    required this.onEditArtwork,
     required this.onToggleFavorite,
     required this.onRename,
     required this.onDelete,
@@ -5061,6 +5440,7 @@ class GalleryPage extends StatefulWidget {
   final List<GalleryArtwork> artworks;
   final VoidCallback onBack;
   final VoidCallback onCreateNew;
+  final ValueChanged<GalleryArtwork> onEditArtwork;
   final ValueChanged<String> onToggleFavorite;
   final void Function(String id, String title) onRename;
   final ValueChanged<String> onDelete;
@@ -5192,6 +5572,9 @@ class _GalleryPageState extends State<GalleryPage> {
               artwork: selected,
               onFavorite: () => widget.onToggleFavorite(selected.id),
               onCreateNew: widget.onCreateNew,
+              onEdit: selected.source == 'free' && selected.replayData != null
+                  ? () => widget.onEditArtwork(selected)
+                  : null,
               onRename: selected.isUserCreated ? () => _rename(selected) : null,
               onDelete: selected.isUserCreated ? () => _delete(selected) : null,
             ),
@@ -5676,6 +6059,7 @@ class GalleryArtworkDetail extends StatefulWidget {
     required this.artwork,
     required this.onFavorite,
     required this.onCreateNew,
+    this.onEdit,
     this.onRename,
     this.onDelete,
   });
@@ -5683,6 +6067,7 @@ class GalleryArtworkDetail extends StatefulWidget {
   final GalleryArtwork artwork;
   final VoidCallback onFavorite;
   final VoidCallback onCreateNew;
+  final VoidCallback? onEdit;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -5878,6 +6263,18 @@ class _GalleryArtworkDetailState extends State<GalleryArtworkDetail> {
                   ),
                 ),
               ),
+              if (widget.onEdit != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('gallery-continue-edit'),
+                    onPressed: widget.onEdit,
+                    icon: const Icon(Icons.draw_rounded),
+                    label: const LocalizedText('继续编辑原作品'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -5935,7 +6332,7 @@ class _GalleryArtworkDetailState extends State<GalleryArtworkDetail> {
           children: [
             SizedBox(height: 340, child: preview),
             const SizedBox(height: 14),
-            SizedBox(height: artwork.isUserCreated ? 455 : 395, child: details),
+            SizedBox(height: artwork.isUserCreated ? 505 : 395, child: details),
           ],
         );
       },
