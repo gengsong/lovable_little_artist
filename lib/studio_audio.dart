@@ -60,6 +60,28 @@ class StudioAudio {
     if (soundEnabled) await SystemSound.play(SystemSoundType.click);
   }
 
+  Future<void> theaterEffect(String effect) async {
+    if (!soundEnabled) return;
+    final alertEffects = {'fly', 'magic', 'premiere'};
+    await SystemSound.play(
+      alertEffects.contains(effect)
+          ? SystemSoundType.alert
+          : SystemSoundType.click,
+    );
+    switch (effect) {
+      case 'jump':
+        await HapticFeedback.lightImpact();
+      case 'blink':
+        await HapticFeedback.selectionClick();
+      case 'spin':
+        await HapticFeedback.mediumImpact();
+      case 'fly':
+        await HapticFeedback.lightImpact();
+      case 'magic' || 'premiere':
+        await HapticFeedback.heavyImpact();
+    }
+  }
+
   Future<void> dispose() async {
     try {
       await _tts.stop();

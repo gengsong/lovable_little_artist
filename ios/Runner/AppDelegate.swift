@@ -14,7 +14,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LittleArtistStorage")
+    guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LittleArtistStorage") else {
+      return
+    }
     storageChannel = FlutterMethodChannel(name: "little_artist/storage", binaryMessenger: registrar.messenger())
     storageChannel?.setMethodCallHandler { call, result in
       switch call.method {

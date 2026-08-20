@@ -56,6 +56,7 @@ String artworkSourceLabel(GalleryArtwork artwork) {
   return switch (artwork.source) {
     'lesson' => '课程作品',
     'coloring' => '涂色作品',
+    'challenge' => '挑战作品',
     _ => '自由创作',
   };
 }

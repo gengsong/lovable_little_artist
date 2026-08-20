@@ -103,6 +103,7 @@ void main() {
       'Free Draw',
       'Coloring Garden',
       'Learn to Draw',
+      "Today's Challenge",
       'My Gallery',
       'Animate Artwork',
     ]) {
@@ -217,6 +218,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('free drawing canvas stays fixed while drawing', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byKey(const ValueKey('free-drawing-canvas'));
+    final before = tester.getRect(canvas);
+    expect(find.byType(InteractiveViewer), findsNothing);
+
+    await tester.drag(canvas, const Offset(120, 70));
+    await tester.pump();
+
+    expect(tester.getRect(canvas), before);
+    expect(find.byTooltip('撤销'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('advanced drawing tools are selectable and undoable', (
     WidgetTester tester,
   ) async {
@@ -244,27 +269,142 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('artwork animation supports four playable motions', (
+  testWidgets(
+    'animation theater records three-act stories and rewards premiere',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1133, 744);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final store = MemoryArtistStore();
+      await tester.pumpWidget(LittleArtistVerseApp(store: store));
+      await tester.tap(find.text('动画故事'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('让你的画演一场故事'), findsOneWidget);
+      for (final story in [
+        'balloon-adventure',
+        'dino-trip',
+        'penguin-party',
+        'space-pet',
+        'ocean-rescue',
+        'monster-birthday',
+      ]) {
+        expect(find.byKey(ValueKey('theater-story-$story')), findsOneWidget);
+      }
+
+      await tester.tap(
+        find.byKey(const ValueKey('theater-story-balloon-adventure')),
+      );
+      await tester.pumpAndSettle();
+
+      for (var index = 0; index < 3; index++) {
+        expect(find.byKey(ValueKey('theater-act-$index')), findsOneWidget);
+      }
+      for (final background in ['forest', 'sky', 'ocean', 'space', 'castle']) {
+        expect(
+          find.byKey(ValueKey('theater-background-$background')),
+          findsOneWidget,
+        );
+      }
+      for (final action in ['jump', 'blink', 'spin', 'fly', 'magic']) {
+        expect(find.byKey(ValueKey('theater-action-$action')), findsOneWidget);
+      }
+
+      final record = find.byKey(const ValueKey('theater-record-toggle'));
+      await tester.ensureVisible(record);
+      await tester.tap(record);
+      await tester.pump();
+      await tester.drag(
+        find.byKey(const ValueKey('theater-stage')),
+        const Offset(150, -70),
+      );
+      await tester.tap(find.byKey(const ValueKey('theater-action-jump')));
+      await tester.ensureVisible(record);
+      await tester.tap(record);
+      await tester.pump();
+
+      await tester.drag(
+        find.byKey(const ValueKey('theater-director-panel')),
+        const Offset(0, 500),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('theater-act-1')));
+      await tester.tap(find.byKey(const ValueKey('theater-background-sky')));
+      await tester.pump();
+
+      await tester.drag(
+        find.byKey(const ValueKey('theater-director-panel')),
+        const Offset(0, -800),
+      );
+      await tester.pump();
+      final premiere = find.byKey(const ValueKey('theater-premiere'));
+      await tester.tap(premiere);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('小小电影院'), findsOneWidget);
+      expect((await store.load()).preferences['creationStars'], 5);
+      expect((await store.load()).preferences['directorPremiereCount'], 1);
+      expect(await store.loadDraft('animation-theater-project'), isNotNull);
+
+      for (var index = 0; index < 3; index++) {
+        await tester.pump(const Duration(milliseconds: 5100));
+      }
+      expect(find.text('首映成功！'), findsOneWidget);
+      expect(find.text('获得 5 颗小导演星星！'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('theater-back-to-edit')));
+      await tester.pump();
+      expect(find.text('三幕故事卡'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('animation theater restores a locally saved project', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1133, 744);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryArtistStore();
+    await store.saveDraft('animation-theater-project', {
+      'version': 1,
+      'id': 'saved-theater',
+      'storyId': 'space-pet',
+      'artworkId': 'sun',
+      'activeActIndex': 1,
+      'acts': [
+        for (var index = 0; index < 3; index++)
+          {
+            'background': index == 1 ? 'space' : 'sky',
+            'points': [
+              {'milliseconds': 0, 'x': .5, 'y': .56},
+              {'milliseconds': 900, 'x': .7, 'y': .4},
+            ],
+            'cues': <Object?>[],
+          },
+      ],
+    });
 
-    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
     await tester.tap(find.text('动画故事'));
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
-    for (final motion in ['jump', 'blink', 'fly', 'replay']) {
-      final finder = find.byKey(ValueKey('animation-motion-$motion'));
-      await tester.ensureVisible(finder);
-      await tester.tap(finder);
-      await tester.pump(const Duration(milliseconds: 120));
-    }
-    await tester.tap(find.byKey(const ValueKey('animation-play-toggle')));
-    await tester.pump();
-    expect(find.byTooltip('播放动画'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('theater-continue-project')),
+      findsOneWidget,
+    );
+    expect(find.text('太空宠物回家'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('theater-continue-project')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('三幕故事卡'), findsOneWidget);
+    final spaceChip = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('theater-background-space')),
+    );
+    expect(spaceChip.selected, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -369,6 +509,57 @@ void main() {
     expect(find.text('⭐ 1 · 🔥 1 天'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'daily challenge offers a creative mission and rewards completion',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1133, 744);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = MemoryArtistStore();
+
+      await tester.pumpWidget(LittleArtistVerseApp(store: store));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('daily-challenge-home')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('今日创意任务'), findsOneWidget);
+      expect(find.text('神奇任务卡'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('daily-challenge-canvas')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('印章'), findsOneWidget);
+      expect(find.byTooltip('贴纸'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('challenge-shuffle-task')));
+      await tester.pump();
+      await tester.drag(
+        find.byKey(const ValueKey('daily-challenge-canvas')),
+        const Offset(95, 55),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('challenge-finish')));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('挑战完成！'), findsOneWidget);
+      expect(find.text('作品已保存，获得 3 颗创意星星！'), findsOneWidget);
+      final snapshot = await store.load();
+      expect(snapshot.artworks.single.source, 'challenge');
+      expect(snapshot.artworks.single.replayData?['challengeId'], isNotNull);
+      expect(snapshot.preferences['challengeCount'], 1);
+      expect(snapshot.preferences['creationStars'], 3);
+
+      await tester.tap(find.text('返回首页'));
+      await tester.pumpAndSettle();
+      expect(find.text('今天已完成，明天再来'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('lesson catalog stays usable on a short landscape phone', (
     WidgetTester tester,

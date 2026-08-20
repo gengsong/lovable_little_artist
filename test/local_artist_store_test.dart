@@ -39,6 +39,25 @@ void main() {
       'version': 1,
       'strokes': <Object?>[],
     });
+    await firstStore.saveDraft('animation-theater-project', {
+      'version': 1,
+      'id': 'theater-1',
+      'storyId': 'space-pet',
+      'artworkId': 'drawing-1',
+      'activeActIndex': 1,
+      'acts': [
+        {
+          'background': 'space',
+          'points': [
+            {'milliseconds': 0, 'x': .5, 'y': .56},
+            {'milliseconds': 800, 'x': .8, 'y': .32},
+          ],
+          'cues': [
+            {'milliseconds': 400, 'action': 'fly'},
+          ],
+        },
+      ],
+    });
 
     final restoredStore = LocalArtistStore(
       directoryProvider: directoryProvider,
@@ -54,6 +73,11 @@ void main() {
     expect(snapshot.preferences['ageGroup'], '6-8岁');
     expect(snapshot.nextArtworkNumber, 2);
     expect(await restoredStore.loadDraft('free-drawing'), isNotNull);
+    final theaterDraft = await restoredStore.loadDraft(
+      'animation-theater-project',
+    );
+    expect(theaterDraft?['storyId'], 'space-pet');
+    expect((theaterDraft?['acts'] as List).single['background'], 'space');
 
     await restoredStore.deleteArtwork('drawing-1');
     await restoredStore.deleteDraft('free-drawing');

@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:image/image.dart' as img;
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
 import 'package:lovable_little_artist/studio_localizations.dart';
@@ -40,6 +39,193 @@ const _brown = AppColors.brown;
 
 void _ignoreStorageError(Future<void> operation) {
   unawaited(operation.catchError((Object _) {}));
+}
+
+String _localDateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
+
+enum ChallengeGuideKind {
+  balloonRescue,
+  dinosaurEgg,
+  magicTail,
+  threeCircles,
+  penguinRide,
+  cloudFriend,
+  halfButterfly,
+  funnyMonster,
+  oceanWindow,
+  moonHome,
+  robotFriend,
+  secretTree,
+  spacePet,
+  rainyDay,
+}
+
+class DailyChallenge {
+  const DailyChallenge({
+    required this.id,
+    required this.title,
+    required this.story,
+    required this.prompt,
+    required this.hint,
+    required this.emoji,
+    required this.guide,
+  });
+
+  final String id;
+  final String title;
+  final String story;
+  final String prompt;
+  final String hint;
+  final String emoji;
+  final ChallengeGuideKind guide;
+}
+
+const _dailyChallenges = <DailyChallenge>[
+  DailyChallenge(
+    id: 'balloon-rescue',
+    title: '气球救援队',
+    story: '小兔子的气球飞到了高高的天空。',
+    prompt: '画一个神奇工具，帮小兔子把气球拿回来！',
+    hint: '它可以很长、会飞，或者拥有魔法。',
+    emoji: '🎈',
+    guide: ChallengeGuideKind.balloonRescue,
+  ),
+  DailyChallenge(
+    id: 'dinosaur-egg',
+    title: '恐龙蛋的秘密',
+    story: '咔嚓！一颗恐龙蛋裂开了一条缝。',
+    prompt: '猜猜里面是谁，把它画出来吧！',
+    hint: '也许是恐龙宝宝，也许是从没见过的新朋友。',
+    emoji: '🥚',
+    guide: ChallengeGuideKind.dinosaurEgg,
+  ),
+  DailyChallenge(
+    id: 'magic-tail',
+    title: '神奇尾巴设计师',
+    story: '小动物醒来，发现自己的尾巴不见了。',
+    prompt: '给它设计一条独一无二的神奇尾巴！',
+    hint: '尾巴可以像彩虹、火箭或者一朵花。',
+    emoji: '🦊',
+    guide: ChallengeGuideKind.magicTail,
+  ),
+  DailyChallenge(
+    id: 'three-circles',
+    title: '三个圆变变变',
+    story: '画纸上滚来了三个圆，它们想变成不同的东西。',
+    prompt: '把三个圆分别变成三个有趣的新朋友！',
+    hint: '加几笔，它们可以变成脸、星球或者食物。',
+    emoji: '⭕',
+    guide: ChallengeGuideKind.threeCircles,
+  ),
+  DailyChallenge(
+    id: 'penguin-ride',
+    title: '企鹅旅行车',
+    story: '小企鹅要去很远的地方参加冰雪派对。',
+    prompt: '为它设计一辆从没见过的交通工具！',
+    hint: '它可以有轮子、翅膀，也可以在水下前进。',
+    emoji: '🐧',
+    guide: ChallengeGuideKind.penguinRide,
+  ),
+  DailyChallenge(
+    id: 'cloud-friend',
+    title: '云朵里的朋友',
+    story: '一朵云轻轻打开了门，里面传来笑声。',
+    prompt: '画出住在云朵里的神秘朋友！',
+    hint: '它可能有很多只眼睛，也可能软绵绵的。',
+    emoji: '☁️',
+    guide: ChallengeGuideKind.cloudFriend,
+  ),
+  DailyChallenge(
+    id: 'half-butterfly',
+    title: '另一半蝴蝶',
+    story: '蝴蝶的一边翅膀藏进了魔法森林。',
+    prompt: '画出另一边翅膀，也可以创造完全不同的花纹！',
+    hint: '两边可以对称，也可以一边白天、一边夜晚。',
+    emoji: '🦋',
+    guide: ChallengeGuideKind.halfButterfly,
+  ),
+  DailyChallenge(
+    id: 'funny-monster',
+    title: '怪兽的新鞋',
+    story: '圆滚滚的小怪兽想去跳舞，可它还没有脚。',
+    prompt: '给怪兽画上有趣的腿和最酷的鞋子！',
+    hint: '腿的数量由你决定，鞋子也可以会发光。',
+    emoji: '👾',
+    guide: ChallengeGuideKind.funnyMonster,
+  ),
+  DailyChallenge(
+    id: 'ocean-window',
+    title: '海底小窗户',
+    story: '潜水艇的窗外闪过一个从没见过的影子。',
+    prompt: '画出窗外的海底奇遇！',
+    hint: '可以加入发光的鱼、宝藏或海底城市。',
+    emoji: '🐠',
+    guide: ChallengeGuideKind.oceanWindow,
+  ),
+  DailyChallenge(
+    id: 'moon-home',
+    title: '月亮上的家',
+    story: '月亮邀请你留下来过夜，可这里还没有房子。',
+    prompt: '设计一座只属于月亮的奇妙小屋！',
+    hint: '想想低重力的门、窗户和月亮床。',
+    emoji: '🌙',
+    guide: ChallengeGuideKind.moonHome,
+  ),
+  DailyChallenge(
+    id: 'robot-friend',
+    title: '机器人的好朋友',
+    story: '小机器人一个人坐在工作台上，有点孤单。',
+    prompt: '为它创造一个特别的新朋友！',
+    hint: '朋友可以是动物、植物，也可以是一件物品。',
+    emoji: '🤖',
+    guide: ChallengeGuideKind.robotFriend,
+  ),
+  DailyChallenge(
+    id: 'secret-tree',
+    title: '树洞里的世界',
+    story: '老树的树洞后面，竟然还有一扇小门。',
+    prompt: '打开小门，画出藏在里面的世界！',
+    hint: '那里可以住着精灵，也可以是一座糖果城。',
+    emoji: '🌳',
+    guide: ChallengeGuideKind.secretTree,
+  ),
+  DailyChallenge(
+    id: 'space-pet',
+    title: '太空宠物',
+    story: '飞船收到一颗会蹦蹦跳跳的神秘信号。',
+    prompt: '画出发出信号的可爱太空宠物！',
+    hint: '想想它有几只脚、吃什么、住在哪里。',
+    emoji: '🪐',
+    guide: ChallengeGuideKind.spacePet,
+  ),
+  DailyChallenge(
+    id: 'rainy-day',
+    title: '雨天变身派对',
+    story: '雨滴落下来，地上的小水坑突然有了表情。',
+    prompt: '把雨天变成一场热闹的变身派对！',
+    hint: '给雨滴加表情，再画雨伞、靴子或彩虹。',
+    emoji: '🌧️',
+    guide: ChallengeGuideKind.rainyDay,
+  ),
+];
+
+const _challengeMagicTasks = <String>[
+  '只能使用三种颜色',
+  '让画里出现一颗星星',
+  '加入两个可爱贴纸',
+  '给主角戴上一顶帽子',
+  '画一个会飞的东西',
+  '藏进一个爱心图案',
+  '使用一次动物印章',
+];
+
+DailyChallenge _challengeForDate(DateTime date) {
+  final day = DateTime(date.year, date.month, date.day);
+  final index = day.difference(DateTime(2024)).inDays.abs();
+  return _dailyChallenges[index % _dailyChallenges.length];
 }
 
 class LittleArtistVerseApp extends StatefulWidget {
@@ -287,6 +473,25 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
     _ignoreStorageError(widget.store.savePreferences(_preferences));
   }
 
+  Future<bool> _recordDirectorPremiere(String projectId) async {
+    final rewarded =
+        ((_preferences['directorRewardProjects'] as List?) ?? const <Object?>[])
+            .whereType<String>()
+            .toList();
+    if (rewarded.contains(projectId)) return false;
+    _recordCreation(DateTime.now());
+    setState(() {
+      rewarded.add(projectId);
+      _creationStars += 4;
+      _preferences['creationStars'] = _creationStars;
+      _preferences['directorRewardProjects'] = rewarded;
+      _preferences['directorPremiereCount'] =
+          ((_preferences['directorPremiereCount'] as num?)?.toInt() ?? 0) + 1;
+    });
+    await widget.store.savePreferences(_preferences);
+    return true;
+  }
+
   Future<void> _addArtwork(
     Uint8List pngBytes,
     Map<String, Object?> replayData,
@@ -374,6 +579,45 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
       artworks.insert(0, artwork);
     });
     _recordCreation(now);
+  }
+
+  Future<void> _addChallengeArtwork(
+    DailyChallenge challenge,
+    Uint8List pngBytes,
+    Map<String, Object?> replayData,
+  ) async {
+    final now = DateTime.now();
+    final id = 'challenge-${challenge.id}-${now.microsecondsSinceEpoch}';
+    final artwork = GalleryArtwork(
+      id: id,
+      title: '挑战作品 · ${challenge.title}',
+      createdLabel: '刚刚',
+      createdAt: now,
+      color: const Color(0xFFE8DEFF),
+      pngBytes: pngBytes,
+      isUserCreated: true,
+      source: 'challenge',
+      replayData: replayData,
+    );
+    await widget.store.saveArtwork(_storedArtworkFromGallery(artwork));
+    if (!mounted) return;
+    final todayKey = _localDateKey(now);
+    final firstCompletionToday = _preferences['lastChallengeDate'] != todayKey;
+    setState(() {
+      _nextArtworkNumber++;
+      artworks.insert(0, artwork);
+    });
+    _recordCreation(now);
+    if (firstCompletionToday) {
+      setState(() {
+        _creationStars += 2;
+        _preferences['creationStars'] = _creationStars;
+        _preferences['lastChallengeDate'] = todayKey;
+        _preferences['challengeCount'] =
+            ((_preferences['challengeCount'] as num?)?.toInt() ?? 0) + 1;
+      });
+      await widget.store.savePreferences(_preferences);
+    }
   }
 
   Future<void> _addLessonArtwork(
@@ -488,6 +732,9 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             artworks: artworks,
             streak: _streak,
             creationStars: _creationStars,
+            challengeCompletedToday:
+                _preferences['lastChallengeDate'] ==
+                _localDateKey(DateTime.now()),
             onOpen: (next) => setState(() {
               if (next == StudioTab.draw) _editingArtwork = null;
               tab = next;
@@ -504,6 +751,17 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
           StudioTab.coloring => ColoringPage(
             onBack: () => setState(() => tab = StudioTab.home),
             onSaved: _addColoringArtwork,
+          ),
+          StudioTab.challenge => DailyChallengePage(
+            challenge: _challengeForDate(DateTime.now()),
+            onBack: () => setState(() => tab = StudioTab.home),
+            onSaved: _addChallengeArtwork,
+            store: widget.store,
+            audio: _audio,
+            soundEnabled: _soundEnabled,
+            rewardClaimedToday:
+                _preferences['lastChallengeDate'] ==
+                _localDateKey(DateTime.now()),
           ),
           StudioTab.lessons => LessonsPage(
             onBack: () => setState(() => tab = StudioTab.home),
@@ -532,6 +790,8 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             onBack: () => setState(() => tab = StudioTab.home),
             artworks: artworks,
             audio: _audio,
+            store: widget.store,
+            onDirectorPremiere: _recordDirectorPremiere,
           ),
           StudioTab.parent => ParentPage(
             onBack: () => setState(() => tab = StudioTab.home),
@@ -623,9 +883,11 @@ class StudioRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveSelected = selected == StudioTab.coloring
-        ? StudioTab.draw
-        : selected;
+    final effectiveSelected = switch (selected) {
+      StudioTab.coloring => StudioTab.draw,
+      StudioTab.challenge => StudioTab.home,
+      _ => selected,
+    };
     final items = [
       (StudioTab.home, Icons.home_rounded, '首页'),
       (StudioTab.draw, Icons.palette_rounded, '画画'),
@@ -737,9 +999,11 @@ class StudioBottomNav extends StatelessWidget {
       (StudioTab.gallery, Icons.photo_library_rounded, '作品集'),
       (StudioTab.animation, Icons.auto_awesome_rounded, '动画'),
     ];
-    final effectiveSelected = selected == StudioTab.coloring
-        ? StudioTab.draw
-        : selected;
+    final effectiveSelected = switch (selected) {
+      StudioTab.coloring => StudioTab.draw,
+      StudioTab.challenge => StudioTab.home,
+      _ => selected,
+    };
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -858,6 +1122,7 @@ class Dashboard extends StatelessWidget {
     required this.artworks,
     required this.streak,
     required this.creationStars,
+    required this.challengeCompletedToday,
     required this.onOpen,
     required this.onLanguageToggle,
   });
@@ -865,6 +1130,7 @@ class Dashboard extends StatelessWidget {
   final List<GalleryArtwork> artworks;
   final int streak;
   final int creationStars;
+  final bool challengeCompletedToday;
   final ValueChanged<StudioTab> onOpen;
   final VoidCallback onLanguageToggle;
 
@@ -932,19 +1198,22 @@ class Dashboard extends StatelessWidget {
                     onTap: () => onOpen(StudioTab.lessons),
                   ),
                   ActionTile(
+                    key: const ValueKey('daily-challenge-home'),
                     title: '今日挑战',
-                    subtitle: '完成彩虹蝴蝶',
+                    subtitle: challengeCompletedToday
+                        ? '今天已完成，明天再来'
+                        : _challengeForDate(DateTime.now()).title,
                     icon: Icons.emoji_events_rounded,
                     iconColor: const Color(0xFF8A5310),
                     color: const Color(0xFFFFE4A6),
-                    onTap: () => onOpen(StudioTab.coloring),
+                    onTap: () => onOpen(StudioTab.challenge),
                   ),
                   ActionTile(
                     title: '我的作品集',
                     subtitle: '你的画作',
                     icon: Icons.photo_library_rounded,
-                    iconColor: const Color(0xFF6E3D00),
-                    color: _butter,
+                    iconColor: const Color(0xFF5D3F9D),
+                    color: const Color(0xFFE8DEFF),
                     onTap: () => onOpen(StudioTab.gallery),
                   ),
                   ActionTile(
@@ -1214,6 +1483,7 @@ String _artworkSourceLabel(GalleryArtwork artwork) {
   return switch (artwork.source) {
     'lesson' => '课程作品',
     'coloring' => '涂色作品',
+    'challenge' => '挑战作品',
     _ => '自由创作',
   };
 }
@@ -2540,6 +2810,1097 @@ class ColoringPainter extends CustomPainter {
       oldDelegate.template != template || oldDelegate.fills != fills;
 }
 
+class DailyChallengePage extends StatefulWidget {
+  const DailyChallengePage({
+    super.key,
+    required this.challenge,
+    required this.onBack,
+    required this.onSaved,
+    required this.store,
+    required this.audio,
+    required this.soundEnabled,
+    required this.rewardClaimedToday,
+  });
+
+  final DailyChallenge challenge;
+  final VoidCallback onBack;
+  final Future<void> Function(
+    DailyChallenge challenge,
+    Uint8List pngBytes,
+    Map<String, Object?> replayData,
+  )
+  onSaved;
+  final ArtistStore store;
+  final StudioAudio audio;
+  final bool soundEnabled;
+  final bool rewardClaimedToday;
+
+  @override
+  State<DailyChallengePage> createState() => _DailyChallengePageState();
+}
+
+class _DailyChallengePageState extends State<DailyChallengePage> {
+  final _canvasKey = GlobalKey();
+  final _strokes = <DrawingStroke>[];
+  final _redoStack = <DrawingStroke>[];
+  DrawingStroke? _activeStroke;
+  int? _activePointer;
+  DrawingTool _tool = DrawingTool.crayon;
+  Color _color = _orange;
+  double _width = 10;
+  bool _showGuide = true;
+  bool _saving = false;
+  bool _rewardClaimed = false;
+  late int _magicTaskIndex;
+  Timer? _autosaveTimer;
+
+  bool get _canUndo => _strokes.isNotEmpty;
+  bool get _canRedo => _redoStack.isNotEmpty;
+  String get _draftKey =>
+      'daily-challenge-${_localDateKey(DateTime.now())}-${widget.challenge.id}';
+
+  @override
+  void initState() {
+    super.initState();
+    _rewardClaimed = widget.rewardClaimedToday;
+    final dayIndex = DateTime.now().difference(DateTime(2024)).inDays.abs();
+    _magicTaskIndex =
+        (dayIndex + widget.challenge.id.length) % _challengeMagicTasks.length;
+    _restoreDraft();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _speakPrompt());
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    if (_strokes.isNotEmpty) _ignoreStorageError(_persistDraft());
+    super.dispose();
+  }
+
+  Future<void> _restoreDraft() async {
+    final draft = await widget.store.loadDraft(_draftKey);
+    if (!mounted || draft == null) return;
+    final restored = _strokesFromDraft(draft);
+    setState(() {
+      _strokes
+        ..clear()
+        ..addAll(restored);
+      _magicTaskIndex =
+          ((draft['magicTaskIndex'] as num?)?.toInt() ?? _magicTaskIndex).clamp(
+            0,
+            _challengeMagicTasks.length - 1,
+          );
+    });
+    if (restored.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('已恢复今天的挑战草稿'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _persistDraft() async {
+    if (_strokes.isEmpty) {
+      await widget.store.deleteDraft(_draftKey);
+      return;
+    }
+    await widget.store.saveDraft(_draftKey, {
+      ..._draftFromStrokes(_strokes),
+      'challengeId': widget.challenge.id,
+      'magicTaskIndex': _magicTaskIndex,
+    });
+  }
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(AppConstants.autosaveDelay, _persistDraft);
+  }
+
+  void _speakPrompt() {
+    if (!widget.soundEnabled || !mounted) return;
+    unawaited(
+      widget.audio.speak(
+        '${context.tr(widget.challenge.story)} '
+        '${context.tr(widget.challenge.prompt)} '
+        '${context.tr('神奇任务卡')}：'
+        '${context.tr(_challengeMagicTasks[_magicTaskIndex])}',
+      ),
+    );
+  }
+
+  double _pressure(PointerEvent event) {
+    if (event.kind != ui.PointerDeviceKind.stylus &&
+        event.kind != ui.PointerDeviceKind.invertedStylus) {
+      return 1;
+    }
+    if (event.pressureMax <= event.pressureMin) return 1;
+    return ((event.pressure - event.pressureMin) /
+            (event.pressureMax - event.pressureMin))
+        .clamp(.35, 1.4);
+  }
+
+  bool _isPalmTouch(PointerDownEvent event) {
+    if (event.kind == ui.PointerDeviceKind.stylus ||
+        event.kind == ui.PointerDeviceKind.invertedStylus) {
+      return false;
+    }
+    return event.radiusMajor >= 30 || event.radiusMinor >= 24;
+  }
+
+  void _startStroke(PointerDownEvent event) {
+    if (_activePointer != null || _isPalmTouch(event)) return;
+    final stroke = DrawingStroke(
+      tool: _tool,
+      color: _tool == DrawingTool.eraser ? Colors.white : _color,
+      baseWidth: _tool == DrawingTool.eraser ? _width * 2.4 : _width,
+      points: [DrawingPoint(event.localPosition, _pressure(event))],
+    );
+    setState(() {
+      _redoStack.clear();
+      _strokes.add(stroke);
+      if (_tool.isDiscrete) {
+        _activePointer = null;
+        _activeStroke = null;
+      } else {
+        _activePointer = event.pointer;
+        _activeStroke = stroke;
+      }
+    });
+    if (_tool.isDiscrete) _scheduleAutosave();
+  }
+
+  void _extendStroke(PointerMoveEvent event) {
+    if (event.pointer != _activePointer || _tool.isDiscrete) return;
+    setState(
+      () => _activeStroke?.points.add(
+        DrawingPoint(event.localPosition, _pressure(event)),
+      ),
+    );
+  }
+
+  void _endStroke(PointerEvent event) {
+    if (event.pointer != _activePointer) return;
+    _activePointer = null;
+    _activeStroke = null;
+    _scheduleAutosave();
+  }
+
+  void _undo() {
+    if (!_canUndo) return;
+    setState(() => _redoStack.add(_strokes.removeLast()));
+    _scheduleAutosave();
+  }
+
+  void _redo() {
+    if (!_canRedo) return;
+    setState(() => _strokes.add(_redoStack.removeLast()));
+    _scheduleAutosave();
+  }
+
+  Future<void> _clear() async {
+    if (_strokes.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const LocalizedText('清空挑战画布吗？'),
+        content: const LocalizedText('清空后还可以使用撤销找回来。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const LocalizedText('继续画'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const LocalizedText('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _redoStack
+        ..clear()
+        ..addAll(_strokes);
+      _strokes.clear();
+    });
+    _scheduleAutosave();
+  }
+
+  void _shuffleMagicTask() {
+    setState(
+      () =>
+          _magicTaskIndex = (_magicTaskIndex + 1) % _challengeMagicTasks.length,
+    );
+    _scheduleAutosave();
+    _speakPrompt();
+  }
+
+  Future<void> _finishChallenge() async {
+    if (_saving) return;
+    if (_strokes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('先画几笔，让故事继续吧！'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    final earnedDailyBonus = !_rewardClaimed;
+    try {
+      final renderObject = _canvasKey.currentContext?.findRenderObject();
+      final size = renderObject is RenderBox && renderObject.hasSize
+          ? renderObject.size
+          : const Size(720, 520);
+      final pngBytes = await _renderDrawingPng(_strokes, size);
+      final replayData = {
+        ..._draftFromStrokes(_strokes, canvasSize: size),
+        'challengeId': widget.challenge.id,
+        'magicTask': _challengeMagicTasks[_magicTaskIndex],
+      };
+      await widget.onSaved(widget.challenge, pngBytes, replayData);
+      await widget.store.deleteDraft(_draftKey);
+      _rewardClaimed = true;
+      if (widget.soundEnabled && mounted) {
+        unawaited(widget.audio.success(context.tr('挑战完成，想象力大爆发！')));
+      }
+      if (!mounted) return;
+      final action = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => ChallengeResultDialog(
+          challenge: widget.challenge,
+          strokes: List<DrawingStroke>.unmodifiable(_strokes),
+          canvasSize: size,
+          earnedDailyBonus: earnedDailyBonus,
+        ),
+      );
+      if (!mounted) return;
+      if (action == 'again') {
+        setState(() {
+          _strokes.clear();
+          _redoStack.clear();
+        });
+      } else if (action == 'home') {
+        widget.onBack();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: LocalizedText('挑战作品保存失败，请再试一次')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppPage(
+      title: '今日挑战 · ${widget.challenge.title}',
+      onBack: widget.onBack,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final sideBySide =
+              constraints.maxWidth >= 760 && constraints.maxHeight >= 500;
+          final canvas = _buildCanvas();
+          final mission = _buildMissionPanel();
+          if (sideBySide) {
+            return Row(
+              children: [
+                Expanded(child: canvas),
+                const SizedBox(width: 16),
+                SizedBox(width: 300, child: mission),
+              ],
+            );
+          }
+          return ListView(
+            children: [
+              SizedBox(
+                height: math.max(350, constraints.maxHeight * .70),
+                child: canvas,
+              ),
+              const SizedBox(height: 14),
+              SizedBox(height: 520, child: mission),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCanvas() {
+    const colors = [
+      _orange,
+      Color(0xFFFFA600),
+      Color(0xFF20B26B),
+      Color(0xFF45A7E8),
+      Color(0xFF8C63E8),
+      _ink,
+    ];
+    return Column(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Listener(
+                  key: const ValueKey('daily-challenge-canvas'),
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _startStroke,
+                  onPointerMove: _extendStroke,
+                  onPointerUp: _endStroke,
+                  onPointerCancel: _endStroke,
+                  child: CustomPaint(
+                    key: _canvasKey,
+                    painter: NativeCanvasPainter(
+                      strokes: _strokes,
+                      guide: _showGuide
+                          ? ChallengeGuidePainter(widget.challenge.guide)
+                          : null,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  top: 14,
+                  child: StoryPaper(
+                    color: const Color(0xFFFFF8D9).withValues(alpha: .94),
+                    borderRadius: 18,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 7,
+                    ),
+                    shadow: false,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.gesture_rounded, size: 17, color: _orange),
+                        SizedBox(width: 6),
+                        LocalizedText(
+                          '虚线是故事开头，你画的线会保持实线',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 12,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.only(left: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .94),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const LocalizedText(
+                          '显示提示',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Switch(
+                          value: _showGuide,
+                          activeTrackColor: _mint,
+                          onChanged: (value) =>
+                              setState(() => _showGuide = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: 64,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ToolChip(
+                  icon: Icons.edit_rounded,
+                  selected: _tool == DrawingTool.crayon,
+                  onTap: () => setState(() => _tool = DrawingTool.crayon),
+                  tooltip: '蜡笔',
+                ),
+                const SizedBox(width: 5),
+                ToolChip(
+                  icon: Icons.cleaning_services_rounded,
+                  selected: _tool == DrawingTool.eraser,
+                  onTap: () => setState(() => _tool = DrawingTool.eraser),
+                  tooltip: '橡皮',
+                ),
+                const SizedBox(width: 5),
+                ToolChip(
+                  icon: Icons.pets_rounded,
+                  selected: _tool == DrawingTool.stamp,
+                  onTap: () => setState(() => _tool = DrawingTool.stamp),
+                  tooltip: '印章',
+                ),
+                const SizedBox(width: 5),
+                ToolChip(
+                  icon: Icons.emoji_emotions_rounded,
+                  selected: _tool == DrawingTool.sticker,
+                  onTap: () => setState(() => _tool = DrawingTool.sticker),
+                  tooltip: '贴纸',
+                ),
+                const SizedBox(width: 5),
+                ToolChip(
+                  icon: Icons.undo_rounded,
+                  selected: false,
+                  onTap: _canUndo ? _undo : null,
+                  tooltip: '撤销',
+                ),
+                const SizedBox(width: 5),
+                ToolChip(
+                  icon: Icons.redo_rounded,
+                  selected: false,
+                  onTap: _canRedo ? _redo : null,
+                  tooltip: '重做',
+                ),
+                const SizedBox(width: 8),
+                for (final color in colors) ...[
+                  InkWell(
+                    borderRadius: BorderRadius.circular(99),
+                    onTap: () => setState(() {
+                      _color = color;
+                      if (_tool == DrawingTool.eraser) {
+                        _tool = DrawingTool.crayon;
+                      }
+                    }),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _color == color && _tool != DrawingTool.eraser
+                              ? _ink
+                              : Colors.white,
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                SizedBox(
+                  width: 110,
+                  child: Slider(
+                    value: _width,
+                    min: 4,
+                    max: 24,
+                    divisions: 10,
+                    activeColor: _color,
+                    onChanged: (value) => setState(() => _width = value),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: context.tr('清空画布'),
+                  onPressed: _strokes.isEmpty ? null : _clear,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMissionPanel() {
+    final challenge = widget.challenge;
+    return StoryPaper(
+      color: const Color(0xFFFFFCF2),
+      borderRadius: 30,
+      padding: const EdgeInsets.all(18),
+      child: ListView(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: BrushStrokeBadge(
+                  label: context.tr('今日创意任务'),
+                  icon: Icons.auto_awesome_rounded,
+                  fontSize: 15,
+                  color: const Color(0xFFFFE4A6),
+                ),
+              ),
+              const SizedBox(width: 6),
+              LocalizedText(
+                '${DateTime.now().month} 月 ${DateTime.now().day} 日',
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: LocalizedText(
+              challenge.emoji,
+              style: const TextStyle(fontSize: 50),
+            ),
+          ),
+          const SizedBox(height: 6),
+          LocalizedText(
+            challenge.title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 23,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          LocalizedText(
+            challenge.story,
+            style: const TextStyle(
+              color: _muted,
+              height: 1.35,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          LocalizedText(
+            challenge.prompt,
+            style: const TextStyle(
+              color: _ink,
+              height: 1.35,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFDDF4E7),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.lightbulb_rounded,
+                  color: Color(0xFF1B7655),
+                  size: 19,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: LocalizedText(
+                    challenge.hint,
+                    style: const TextStyle(
+                      color: Color(0xFF245C49),
+                      fontSize: 12,
+                      height: 1.35,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8DEFF),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFB89EEB)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.style_rounded,
+                      size: 19,
+                      color: Color(0xFF5D3F9D),
+                    ),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: LocalizedText(
+                        '神奇任务卡',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF5D3F9D),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                LocalizedText(
+                  _challengeMagicTasks[_magicTaskIndex],
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const ValueKey('challenge-shuffle-task'),
+                    onPressed: _shuffleMagicTask,
+                    icon: const Icon(Icons.casino_rounded, size: 18),
+                    label: const LocalizedText('换一张'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          LocalizedText(
+            _rewardClaimed ? '再次完成可获得 1 颗星星' : '完成奖励：3 颗创意星星',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF8A5310),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            key: const ValueKey('challenge-finish'),
+            onPressed: _saving ? null : _finishChallenge,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              backgroundColor: _orange,
+            ),
+            icon: Icon(
+              _saving ? Icons.hourglass_top_rounded : Icons.celebration_rounded,
+            ),
+            label: LocalizedText(_saving ? '正在保存…' : '完成挑战'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ChallengeResultDialog extends StatelessWidget {
+  const ChallengeResultDialog({
+    super.key,
+    required this.challenge,
+    required this.strokes,
+    required this.canvasSize,
+    required this.earnedDailyBonus,
+  });
+
+  final DailyChallenge challenge;
+  final List<DrawingStroke> strokes;
+  final Size canvasSize;
+  final bool earnedDailyBonus;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.elasticOut,
+              builder: (context, value, child) => Transform.translate(
+                offset: Offset(0, (1 - value) * 55),
+                child: Transform.scale(scale: .55 + value * .45, child: child),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 310,
+                    height: 190,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: const Color(0xFFFFD36A),
+                        width: 4,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: canvasSize.width,
+                          height: canvasSize.height,
+                          child: CustomPaint(
+                            painter: NativeCanvasPainter(strokes: strokes),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    left: -18,
+                    top: -18,
+                    child: Text('⭐', style: TextStyle(fontSize: 34)),
+                  ),
+                  const Positioned(
+                    right: -20,
+                    top: 8,
+                    child: Text('🎉', style: TextStyle(fontSize: 38)),
+                  ),
+                  const Positioned(
+                    right: 24,
+                    bottom: -20,
+                    child: Text('✨', style: TextStyle(fontSize: 34)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            const LocalizedText(
+              '挑战完成！',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 7),
+            const LocalizedText(
+              '你的想象力让故事有了新的结局。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            LocalizedText(
+              earnedDailyBonus ? '作品已保存，获得 3 颗创意星星！' : '作品已保存，获得 1 颗创意星星！',
+              style: const TextStyle(
+                color: Color(0xFF8A5310),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'again'),
+          child: const LocalizedText('再挑战一次'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, 'home'),
+          child: const LocalizedText('返回首页'),
+        ),
+      ],
+    );
+  }
+}
+
+class ChallengeGuidePainter extends CustomPainter {
+  const ChallengeGuidePainter(this.kind);
+
+  final ChallengeGuideKind kind;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 600, size.height / 420);
+    final solid = Paint()
+      ..color = const Color(0xFF947A68).withValues(alpha: .34)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = const Color(0xFFDCCDBF).withValues(alpha: .28)
+      ..style = PaintingStyle.fill;
+    final dashed = Paint()
+      ..color = _orange.withValues(alpha: .58)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    Path oval(Rect rect) => Path()..addOval(rect);
+    Path roundRect(Rect rect, double radius) =>
+        Path()
+          ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+
+    switch (kind) {
+      case ChallengeGuideKind.balloonRescue:
+        canvas.drawOval(const Rect.fromLTWH(80, 235, 118, 122), fill);
+        canvas.drawOval(const Rect.fromLTWH(102, 172, 78, 72), solid);
+        canvas.drawLine(const Offset(118, 182), const Offset(105, 145), solid);
+        canvas.drawLine(const Offset(160, 182), const Offset(175, 145), solid);
+        _drawChallengeDashedPath(
+          canvas,
+          oval(const Rect.fromLTWH(420, 60, 105, 128)),
+          dashed,
+        );
+        _drawChallengeDashedPath(
+          canvas,
+          Path()
+            ..moveTo(472, 188)
+            ..quadraticBezierTo(420, 245, 470, 310),
+          dashed,
+        );
+      case ChallengeGuideKind.dinosaurEgg:
+        _drawChallengeDashedPath(
+          canvas,
+          oval(const Rect.fromLTWH(190, 62, 220, 292)),
+          dashed,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(265, 202)
+            ..lineTo(300, 176)
+            ..lineTo(326, 215)
+            ..lineTo(358, 188),
+          solid,
+        );
+      case ChallengeGuideKind.magicTail:
+        canvas.drawOval(const Rect.fromLTWH(205, 175, 210, 125), fill);
+        canvas.drawOval(const Rect.fromLTWH(130, 152, 105, 100), solid);
+        canvas.drawLine(const Offset(245, 290), const Offset(235, 350), solid);
+        canvas.drawLine(const Offset(365, 290), const Offset(375, 350), solid);
+        canvas.drawCircle(const Offset(165, 185), 5, solid);
+        _drawChallengeDashedPath(
+          canvas,
+          Path()
+            ..moveTo(414, 215)
+            ..cubicTo(495, 155, 540, 210, 505, 285),
+          dashed,
+        );
+      case ChallengeGuideKind.threeCircles:
+        for (final rect in const [
+          Rect.fromLTWH(65, 145, 135, 135),
+          Rect.fromLTWH(233, 85, 135, 135),
+          Rect.fromLTWH(400, 165, 135, 135),
+        ]) {
+          _drawChallengeDashedPath(canvas, oval(rect), dashed);
+        }
+      case ChallengeGuideKind.penguinRide:
+        canvas.drawOval(const Rect.fromLTWH(82, 145, 120, 178), fill);
+        canvas.drawOval(const Rect.fromLTWH(104, 120, 78, 82), solid);
+        canvas.drawLine(const Offset(96, 326), const Offset(186, 326), solid);
+        canvas.drawPath(
+          Path()
+            ..moveTo(245, 340)
+            ..quadraticBezierTo(390, 300, 560, 340),
+          solid,
+        );
+        _drawChallengeDashedPath(
+          canvas,
+          roundRect(const Rect.fromLTWH(240, 155, 260, 150), 36),
+          dashed,
+        );
+      case ChallengeGuideKind.cloudFriend:
+        final cloud = Path()
+          ..moveTo(145, 265)
+          ..cubicTo(90, 255, 100, 190, 158, 190)
+          ..cubicTo(168, 120, 268, 112, 298, 174)
+          ..cubicTo(350, 132, 430, 170, 420, 226)
+          ..cubicTo(490, 238, 475, 305, 405, 305)
+          ..lineTo(160, 305)
+          ..close();
+        _drawChallengeDashedPath(canvas, cloud, dashed);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(272, 216, 58, 88),
+            const Radius.circular(25),
+          ),
+          solid,
+        );
+      case ChallengeGuideKind.halfButterfly:
+        canvas.drawOval(const Rect.fromLTWH(286, 118, 28, 190), solid);
+        canvas.drawLine(const Offset(295, 122), const Offset(270, 85), solid);
+        canvas.drawLine(const Offset(305, 122), const Offset(330, 85), solid);
+        final wing = Path()
+          ..moveTo(288, 145)
+          ..cubicTo(188, 70, 100, 130, 152, 220)
+          ..cubicTo(102, 300, 215, 352, 288, 277)
+          ..close();
+        _drawChallengeDashedPath(canvas, wing, dashed);
+      case ChallengeGuideKind.funnyMonster:
+        final monster = Path()
+          ..moveTo(165, 285)
+          ..cubicTo(135, 135, 220, 72, 302, 118)
+          ..cubicTo(390, 65, 478, 150, 435, 286)
+          ..close();
+        canvas.drawPath(monster, fill);
+        canvas.drawPath(monster, solid);
+        canvas.drawCircle(const Offset(248, 190), 12, solid);
+        canvas.drawCircle(const Offset(352, 190), 12, solid);
+        _drawChallengeDashedPath(
+          canvas,
+          Path()
+            ..moveTo(210, 286)
+            ..lineTo(195, 352)
+            ..moveTo(300, 286)
+            ..lineTo(300, 352)
+            ..moveTo(390, 286)
+            ..lineTo(408, 352),
+          dashed,
+        );
+      case ChallengeGuideKind.oceanWindow:
+        canvas.drawCircle(const Offset(300, 210), 165, solid);
+        canvas.drawCircle(const Offset(300, 210), 145, solid);
+        for (var angle = 0.0; angle < math.pi * 2; angle += math.pi / 4) {
+          final center = Offset(
+            300 + math.cos(angle) * 155,
+            210 + math.sin(angle) * 155,
+          );
+          canvas.drawCircle(center, 7, solid);
+        }
+        _drawChallengeDashedPath(
+          canvas,
+          Path()
+            ..moveTo(170, 265)
+            ..quadraticBezierTo(300, 225, 430, 270),
+          dashed,
+        );
+      case ChallengeGuideKind.moonHome:
+        canvas.drawArc(
+          const Rect.fromLTWH(55, 55, 205, 205),
+          -.8,
+          math.pi * 1.55,
+          false,
+          solid,
+        );
+        _drawChallengeDashedPath(
+          canvas,
+          roundRect(const Rect.fromLTWH(300, 175, 205, 150), 25),
+          dashed,
+        );
+        canvas.drawLine(const Offset(80, 350), const Offset(530, 350), solid);
+      case ChallengeGuideKind.robotFriend:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(90, 110, 135, 105),
+            const Radius.circular(18),
+          ),
+          solid,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(75, 220, 165, 125),
+            const Radius.circular(22),
+          ),
+          fill,
+        );
+        canvas.drawCircle(const Offset(130, 158), 8, solid);
+        canvas.drawCircle(const Offset(185, 158), 8, solid);
+        _drawChallengeDashedPath(
+          canvas,
+          oval(const Rect.fromLTWH(345, 135, 150, 185)),
+          dashed,
+        );
+      case ChallengeGuideKind.secretTree:
+        canvas.drawPath(
+          Path()
+            ..moveTo(235, 360)
+            ..lineTo(255, 205)
+            ..lineTo(345, 205)
+            ..lineTo(370, 360),
+          solid,
+        );
+        canvas.drawCircle(const Offset(300, 150), 118, fill);
+        _drawChallengeDashedPath(
+          canvas,
+          roundRect(const Rect.fromLTWH(270, 245, 64, 105), 28),
+          dashed,
+        );
+      case ChallengeGuideKind.spacePet:
+        canvas.drawCircle(const Offset(160, 165), 75, fill);
+        canvas.drawOval(const Rect.fromLTWH(65, 145, 190, 45), solid);
+        for (final star in const [
+          Offset(340, 80),
+          Offset(480, 120),
+          Offset(420, 320),
+          Offset(255, 335),
+        ]) {
+          canvas.drawCircle(star, 5, solid);
+        }
+        _drawChallengeDashedPath(
+          canvas,
+          oval(const Rect.fromLTWH(310, 145, 150, 145)),
+          dashed,
+        );
+      case ChallengeGuideKind.rainyDay:
+        final cloud = Path()
+          ..moveTo(165, 135)
+          ..cubicTo(155, 70, 245, 55, 275, 108)
+          ..cubicTo(340, 72, 420, 112, 400, 170)
+          ..lineTo(190, 170)
+          ..close();
+        canvas.drawPath(cloud, fill);
+        canvas.drawPath(cloud, solid);
+        for (final x in const [205.0, 275.0, 345.0, 415.0]) {
+          _drawChallengeDashedPath(
+            canvas,
+            Path()
+              ..moveTo(x, 205)
+              ..quadraticBezierTo(x - 18, 245, x, 270),
+            dashed,
+          );
+        }
+        canvas.drawOval(const Rect.fromLTWH(150, 298, 300, 42), solid);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant ChallengeGuidePainter oldDelegate) =>
+      oldDelegate.kind != kind;
+}
+
+void _drawChallengeDashedPath(Canvas canvas, Path path, Paint paint) {
+  for (final metric in path.computeMetrics()) {
+    var distance = 0.0;
+    const dash = 12.0;
+    const gap = 9.0;
+    while (distance < metric.length) {
+      canvas.drawPath(
+        metric.extractPath(distance, math.min(distance + dash, metric.length)),
+        paint,
+      );
+      distance += dash + gap;
+    }
+  }
+}
+
 class DrawPage extends StatefulWidget {
   const DrawPage({
     super.key,
@@ -2566,7 +3927,6 @@ class DrawPage extends StatefulWidget {
 
 class _DrawPageState extends State<DrawPage> {
   final _canvasKey = GlobalKey();
-  final _transformController = TransformationController();
   final _strokes = <DrawingStroke>[];
   final _redoStack = <DrawingStroke>[];
   final _activePointers = <int, Offset>{};
@@ -2597,7 +3957,6 @@ class _DrawPageState extends State<DrawPage> {
   void dispose() {
     _autosaveTimer?.cancel();
     _savedIndicatorTimer?.cancel();
-    _transformController.dispose();
     if (_strokes.isNotEmpty) _ignoreStorageError(_persistDraft());
     super.dispose();
   }
@@ -2902,17 +4261,7 @@ class _DrawPageState extends State<DrawPage> {
           );
           final canvas = Stack(
             children: [
-              Positioned.fill(
-                child: InteractiveViewer(
-                  transformationController: _transformController,
-                  boundaryMargin: const EdgeInsets.all(520),
-                  minScale: .58,
-                  maxScale: 3.2,
-                  panEnabled: true,
-                  scaleEnabled: true,
-                  child: drawingSurface,
-                ),
-              ),
+              Positioned.fill(child: drawingSurface),
               Positioned(
                 left: 16,
                 top: 16,
@@ -6833,11 +8182,1465 @@ class GalleryEmptyState extends StatelessWidget {
   }
 }
 
-enum ArtworkMotion { breathe, blink, jump, fly, replay }
+enum TheaterBackground { forest, sky, ocean, space, castle }
+
+extension TheaterBackgroundInfo on TheaterBackground {
+  String get label => switch (this) {
+    TheaterBackground.forest => '魔法森林',
+    TheaterBackground.sky => '云朵天空',
+    TheaterBackground.ocean => '海底世界',
+    TheaterBackground.space => '星际太空',
+    TheaterBackground.castle => '童话城堡',
+  };
+
+  IconData get icon => switch (this) {
+    TheaterBackground.forest => Icons.park_rounded,
+    TheaterBackground.sky => Icons.cloud_rounded,
+    TheaterBackground.ocean => Icons.water_rounded,
+    TheaterBackground.space => Icons.rocket_launch_rounded,
+    TheaterBackground.castle => Icons.castle_rounded,
+  };
+}
+
+enum TheaterAction { jump, blink, spin, fly, magic }
+
+extension TheaterActionInfo on TheaterAction {
+  String get label => switch (this) {
+    TheaterAction.jump => '跳一跳',
+    TheaterAction.blink => '眨眼',
+    TheaterAction.spin => '转圈圈',
+    TheaterAction.fly => '飞起来',
+    TheaterAction.magic => '魔法闪光',
+  };
+
+  IconData get icon => switch (this) {
+    TheaterAction.jump => Icons.arrow_upward_rounded,
+    TheaterAction.blink => Icons.visibility_rounded,
+    TheaterAction.spin => Icons.rotate_right_rounded,
+    TheaterAction.fly => Icons.flight_takeoff_rounded,
+    TheaterAction.magic => Icons.auto_awesome_rounded,
+  };
+}
+
+class TheaterSceneTemplate {
+  const TheaterSceneTemplate(this.title, this.prompt);
+
+  final String title;
+  final String prompt;
+}
+
+class TheaterStoryTemplate {
+  const TheaterStoryTemplate({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.emoji,
+    required this.background,
+    required this.scenes,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final String emoji;
+  final TheaterBackground background;
+  final List<TheaterSceneTemplate> scenes;
+}
+
+const _theaterStories = <TheaterStoryTemplate>[
+  TheaterStoryTemplate(
+    id: 'balloon-adventure',
+    title: '小兔子寻找气球',
+    subtitle: '追着风，飞过魔法森林',
+    emoji: '🎈',
+    background: TheaterBackground.forest,
+    scenes: [
+      TheaterSceneTemplate('气球飞走了', '让主角发现飞走的气球。'),
+      TheaterSceneTemplate('勇敢去追', '拖着主角穿过森林，加入一个飞行动作。'),
+      TheaterSceneTemplate('找到啦', '让主角跳起来接住气球，开心庆祝！'),
+    ],
+  ),
+  TheaterStoryTemplate(
+    id: 'dino-trip',
+    title: '恐龙宝宝第一次旅行',
+    subtitle: '从森林出发，认识新朋友',
+    emoji: '🦕',
+    background: TheaterBackground.forest,
+    scenes: [
+      TheaterSceneTemplate('背上小书包', '让恐龙宝宝在家门口准备出发。'),
+      TheaterSceneTemplate('越过小山坡', '录下奔跑、跳跃和转圈的路线。'),
+      TheaterSceneTemplate('新朋友你好', '安排一场见面舞会，留下快乐结局。'),
+    ],
+  ),
+  TheaterStoryTemplate(
+    id: 'penguin-party',
+    title: '企鹅的冰雪派对',
+    subtitle: '滑过海浪，赶上闪亮舞会',
+    emoji: '🐧',
+    background: TheaterBackground.ocean,
+    scenes: [
+      TheaterSceneTemplate('派对邀请函', '让企鹅看到邀请函，惊喜地眨眨眼。'),
+      TheaterSceneTemplate('乘浪出发', '拖着企鹅滑过海浪，旋转躲开浪花。'),
+      TheaterSceneTemplate('冰雪舞会', '设计一段跳跃舞蹈，为派对收尾。'),
+    ],
+  ),
+  TheaterStoryTemplate(
+    id: 'space-pet',
+    title: '太空宠物回家',
+    subtitle: '穿过星星，把小伙伴送回家',
+    emoji: '🪐',
+    background: TheaterBackground.space,
+    scenes: [
+      TheaterSceneTemplate('收到神秘信号', '让主角发现躲在星球后的太空宠物。'),
+      TheaterSceneTemplate('星际飞行', '录制一条弯弯的飞行路线，避开星星。'),
+      TheaterSceneTemplate('回到温暖的家', '用魔法闪光点亮家门，挥手告别。'),
+    ],
+  ),
+  TheaterStoryTemplate(
+    id: 'ocean-rescue',
+    title: '海底宝藏救援',
+    subtitle: '潜入深海，帮助被困的小鱼',
+    emoji: '🐠',
+    background: TheaterBackground.ocean,
+    scenes: [
+      TheaterSceneTemplate('发现求救泡泡', '让主角跟着泡泡进入海底。'),
+      TheaterSceneTemplate('绕过珊瑚迷宫', '拖出曲折路线，加入旋转和眨眼。'),
+      TheaterSceneTemplate('宝藏变成礼物', '救出小鱼，让宝箱发出魔法光芒。'),
+    ],
+  ),
+  TheaterStoryTemplate(
+    id: 'monster-birthday',
+    title: '怪兽生日惊喜',
+    subtitle: '偷偷准备一场城堡派对',
+    emoji: '🎂',
+    background: TheaterBackground.castle,
+    scenes: [
+      TheaterSceneTemplate('准备秘密礼物', '让主角悄悄把礼物藏进城堡。'),
+      TheaterSceneTemplate('怪兽要回来啦', '快速移动主角，布置最后的惊喜。'),
+      TheaterSceneTemplate('生日快乐', '跳起来、转圈圈，一起庆祝生日！'),
+    ],
+  ),
+];
+
+class TheaterMotionPoint {
+  const TheaterMotionPoint({
+    required this.milliseconds,
+    required this.x,
+    required this.y,
+  });
+
+  final int milliseconds;
+  final double x;
+  final double y;
+
+  Map<String, Object?> toJson() => {
+    'milliseconds': milliseconds,
+    'x': x,
+    'y': y,
+  };
+
+  factory TheaterMotionPoint.fromJson(Map<String, dynamic> json) =>
+      TheaterMotionPoint(
+        milliseconds: (json['milliseconds'] as num?)?.toInt() ?? 0,
+        x: (json['x'] as num?)?.toDouble() ?? .5,
+        y: (json['y'] as num?)?.toDouble() ?? .55,
+      );
+}
+
+class TheaterActionCue {
+  const TheaterActionCue({required this.milliseconds, required this.action});
+
+  final int milliseconds;
+  final TheaterAction action;
+
+  Map<String, Object?> toJson() => {
+    'milliseconds': milliseconds,
+    'action': action.name,
+  };
+
+  factory TheaterActionCue.fromJson(Map<String, dynamic> json) =>
+      TheaterActionCue(
+        milliseconds: (json['milliseconds'] as num?)?.toInt() ?? 0,
+        action: TheaterAction.values.byName(
+          json['action'] as String? ?? TheaterAction.jump.name,
+        ),
+      );
+}
+
+class TheaterActProject {
+  TheaterActProject({
+    required this.background,
+    List<TheaterMotionPoint>? points,
+    List<TheaterActionCue>? cues,
+  }) : points = points ?? [],
+       cues = cues ?? [];
+
+  TheaterBackground background;
+  final List<TheaterMotionPoint> points;
+  final List<TheaterActionCue> cues;
+
+  bool get hasPerformance => points.length > 1 || cues.isNotEmpty;
+
+  Map<String, Object?> toJson() => {
+    'background': background.name,
+    'points': points.map((point) => point.toJson()).toList(),
+    'cues': cues.map((cue) => cue.toJson()).toList(),
+  };
+
+  factory TheaterActProject.fromJson(Map<String, dynamic> json) {
+    TheaterBackground background;
+    try {
+      background = TheaterBackground.values.byName(
+        json['background'] as String? ?? TheaterBackground.forest.name,
+      );
+    } catch (_) {
+      background = TheaterBackground.forest;
+    }
+    return TheaterActProject(
+      background: background,
+      points: [
+        for (final item in json['points'] as List<dynamic>? ?? const [])
+          TheaterMotionPoint.fromJson((item as Map).cast<String, dynamic>()),
+      ],
+      cues: [
+        for (final item in json['cues'] as List<dynamic>? ?? const [])
+          TheaterActionCue.fromJson((item as Map).cast<String, dynamic>()),
+      ],
+    );
+  }
+}
+
+class TheaterProject {
+  TheaterProject({
+    required this.id,
+    required this.storyId,
+    required this.artworkId,
+    required this.acts,
+    this.activeActIndex = 0,
+  });
+
+  final String id;
+  final String storyId;
+  String artworkId;
+  final List<TheaterActProject> acts;
+  int activeActIndex;
+
+  Map<String, Object?> toJson() => {
+    'version': 1,
+    'id': id,
+    'storyId': storyId,
+    'artworkId': artworkId,
+    'activeActIndex': activeActIndex,
+    'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    'acts': acts.map((act) => act.toJson()).toList(),
+  };
+
+  factory TheaterProject.fromJson(Map<String, Object?> json) => TheaterProject(
+    id: json['id'] as String? ?? 'theater-restored',
+    storyId: json['storyId'] as String? ?? _theaterStories.first.id,
+    artworkId: json['artworkId'] as String? ?? '',
+    activeActIndex: ((json['activeActIndex'] as num?)?.toInt() ?? 0).clamp(
+      0,
+      2,
+    ),
+    acts: [
+      for (final item in json['acts'] as List<dynamic>? ?? const [])
+        TheaterActProject.fromJson((item as Map).cast<String, dynamic>()),
+    ],
+  );
+}
+
+enum TheaterScreen { lobby, studio, cinema }
+
+class AnimationPage extends StatefulWidget {
+  const AnimationPage({
+    super.key,
+    required this.onBack,
+    required this.artworks,
+    required this.audio,
+    required this.store,
+    required this.onDirectorPremiere,
+  });
+
+  final VoidCallback onBack;
+  final List<GalleryArtwork> artworks;
+  final StudioAudio audio;
+  final ArtistStore store;
+  final Future<bool> Function(String projectId) onDirectorPremiere;
+
+  @override
+  State<AnimationPage> createState() => _AnimationPageState();
+}
+
+class _AnimationPageState extends State<AnimationPage>
+    with SingleTickerProviderStateMixin {
+  static const _draftKey = 'animation-theater-project';
+  static const _actDuration = Duration(seconds: 5);
+
+  late final AnimationController _controller;
+  final Stopwatch _recordingClock = Stopwatch();
+  Timer? _recordingTimer;
+  Timer? _autosaveTimer;
+  TheaterProject? _project;
+  TheaterScreen _screen = TheaterScreen.lobby;
+  late String _selectedArtworkId;
+  bool _loading = true;
+  bool _recording = false;
+  bool _cinemaFinished = false;
+  bool _earnedDirectorReward = false;
+  int _cinemaActIndex = 0;
+  int _lastPlaybackMilliseconds = 0;
+
+  TheaterStoryTemplate get _story => _theaterStories.firstWhere(
+    (story) => story.id == _project!.storyId,
+    orElse: () => _theaterStories.first,
+  );
+
+  TheaterActProject get _activeAct => _project!.acts[_project!.activeActIndex];
+
+  TheaterActProject get _playingAct => _screen == TheaterScreen.cinema
+      ? _project!.acts[_cinemaActIndex]
+      : _activeAct;
+
+  GalleryArtwork get _selectedArtwork => widget.artworks.firstWhere(
+    (artwork) => artwork.id == (_project?.artworkId ?? _selectedArtworkId),
+    orElse: () => widget.artworks.first,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedArtworkId = widget.artworks.first.id;
+    _controller = AnimationController(vsync: this, duration: _actDuration)
+      ..addListener(_onPlaybackTick)
+      ..addStatusListener(_onPlaybackStatus);
+    _restoreProject();
+  }
+
+  @override
+  void dispose() {
+    _recordingTimer?.cancel();
+    _autosaveTimer?.cancel();
+    _recordingClock.stop();
+    if (_project != null) _ignoreStorageError(_persistProject());
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _restoreProject() async {
+    final draft = await widget.store.loadDraft(_draftKey);
+    TheaterProject? restored;
+    if (draft != null) {
+      try {
+        final candidate = TheaterProject.fromJson(draft);
+        final validStory = _theaterStories.any(
+          (story) => story.id == candidate.storyId,
+        );
+        if (validStory && candidate.acts.length == 3) restored = candidate;
+      } catch (_) {
+        restored = null;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _project = restored;
+      if (restored != null &&
+          widget.artworks.any((item) => item.id == restored!.artworkId)) {
+        _selectedArtworkId = restored.artworkId;
+      }
+      _loading = false;
+    });
+  }
+
+  Future<void> _persistProject() async {
+    final project = _project;
+    if (project == null) return;
+    await widget.store.saveDraft(_draftKey, project.toJson());
+  }
+
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 450), _persistProject);
+  }
+
+  void _startStory(TheaterStoryTemplate story) {
+    _stopRecording();
+    _controller.stop();
+    setState(() {
+      _project = TheaterProject(
+        id: 'theater-${DateTime.now().microsecondsSinceEpoch}',
+        storyId: story.id,
+        artworkId: _selectedArtworkId,
+        acts: [
+          for (var index = 0; index < 3; index++)
+            TheaterActProject(background: story.background),
+        ],
+      );
+      _screen = TheaterScreen.studio;
+      _cinemaFinished = false;
+      _earnedDirectorReward = false;
+    });
+    _scheduleAutosave();
+    unawaited(widget.audio.speak(context.tr(story.subtitle)));
+  }
+
+  void _continueProject() {
+    if (_project == null) return;
+    setState(() => _screen = TheaterScreen.studio);
+  }
+
+  void _selectAct(int index) {
+    _stopRecording();
+    _controller.stop();
+    setState(() {
+      _project!.activeActIndex = index;
+      _lastPlaybackMilliseconds = 0;
+    });
+    _scheduleAutosave();
+  }
+
+  void _startRecording() {
+    _controller.stop();
+    final act = _activeAct;
+    setState(() {
+      act.points
+        ..clear()
+        ..add(const TheaterMotionPoint(milliseconds: 0, x: .5, y: .56));
+      act.cues.clear();
+      _recording = true;
+    });
+    _recordingClock
+      ..reset()
+      ..start();
+    _recordingTimer?.cancel();
+    _recordingTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
+      if (_recordingClock.elapsed >= _actDuration) _stopRecording();
+    });
+    unawaited(widget.audio.theaterEffect('premiere'));
+  }
+
+  void _stopRecording() {
+    if (!_recording) return;
+    _recordingTimer?.cancel();
+    _recordingClock.stop();
+    if (mounted) setState(() => _recording = false);
+    _scheduleAutosave();
+  }
+
+  void _recordPosition(Offset localPosition, Size size) {
+    if (!_recording || size.isEmpty) return;
+    final milliseconds = _recordingClock.elapsedMilliseconds.clamp(
+      0,
+      _actDuration.inMilliseconds,
+    );
+    final point = TheaterMotionPoint(
+      milliseconds: milliseconds,
+      x: (localPosition.dx / size.width).clamp(.10, .90),
+      y: (localPosition.dy / size.height).clamp(.14, .86),
+    );
+    final points = _activeAct.points;
+    if (points.isNotEmpty && milliseconds - points.last.milliseconds < 16) {
+      return;
+    }
+    setState(() => points.add(point));
+  }
+
+  void _addAction(TheaterAction action) {
+    if (!_recording) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('先点击“开始表演”，再加入动作贴纸'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final milliseconds = _recordingClock.elapsedMilliseconds.clamp(
+      0,
+      _actDuration.inMilliseconds,
+    );
+    setState(
+      () => _activeAct.cues.add(
+        TheaterActionCue(milliseconds: milliseconds, action: action),
+      ),
+    );
+    _scheduleAutosave();
+    unawaited(widget.audio.theaterEffect(action.name));
+  }
+
+  void _playActiveAct() {
+    _stopRecording();
+    if (!_activeAct.hasPerformance) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: LocalizedText('先录一段表演再回放吧！')));
+      return;
+    }
+    setState(() {
+      _lastPlaybackMilliseconds = 0;
+      _cinemaFinished = false;
+    });
+    _controller.forward(from: 0);
+  }
+
+  Future<void> _openCinema() async {
+    _stopRecording();
+    _controller.stop();
+    final project = _project!;
+    await _persistProject();
+    final earned = await widget.onDirectorPremiere(project.id);
+    if (!mounted) return;
+    setState(() {
+      _screen = TheaterScreen.cinema;
+      _cinemaActIndex = 0;
+      _cinemaFinished = false;
+      _earnedDirectorReward = earned;
+      _lastPlaybackMilliseconds = 0;
+    });
+    unawaited(widget.audio.theaterEffect('premiere'));
+    _controller.forward(from: 0);
+  }
+
+  void _onPlaybackTick() {
+    if (_project == null || !_controller.isAnimating) return;
+    final current = (_controller.value * _actDuration.inMilliseconds).round();
+    if (current < _lastPlaybackMilliseconds) _lastPlaybackMilliseconds = 0;
+    for (final cue in _playingAct.cues) {
+      if (cue.milliseconds > _lastPlaybackMilliseconds &&
+          cue.milliseconds <= current) {
+        unawaited(widget.audio.theaterEffect(cue.action.name));
+      }
+    }
+    _lastPlaybackMilliseconds = current;
+  }
+
+  void _onPlaybackStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+    if (_screen == TheaterScreen.cinema && _cinemaActIndex < 2) {
+      setState(() {
+        _cinemaActIndex++;
+        _lastPlaybackMilliseconds = 0;
+      });
+      _controller.forward(from: 0);
+    } else if (_screen == TheaterScreen.cinema) {
+      setState(() => _cinemaFinished = true);
+      unawaited(widget.audio.success(context.tr('首映成功，掌声送给小导演！')));
+    }
+  }
+
+  Offset _positionAt(TheaterActProject act, int milliseconds) {
+    if (act.points.isEmpty) return const Offset(.5, .56);
+    if (act.points.length == 1 ||
+        milliseconds <= act.points.first.milliseconds) {
+      final point = act.points.first;
+      return Offset(point.x, point.y);
+    }
+    for (var index = 1; index < act.points.length; index++) {
+      final next = act.points[index];
+      if (milliseconds <= next.milliseconds) {
+        final previous = act.points[index - 1];
+        final span = math.max(1, next.milliseconds - previous.milliseconds);
+        final value = ((milliseconds - previous.milliseconds) / span).clamp(
+          0.0,
+          1.0,
+        );
+        return Offset(
+          ui.lerpDouble(previous.x, next.x, value)!,
+          ui.lerpDouble(previous.y, next.y, value)!,
+        );
+      }
+    }
+    final last = act.points.last;
+    return Offset(last.x, last.y);
+  }
+
+  (TheaterAction, double)? _activeCueAt(
+    TheaterActProject act,
+    int milliseconds,
+  ) {
+    for (final cue in act.cues.reversed) {
+      final distance = (milliseconds - cue.milliseconds).abs();
+      if (distance <= 420) {
+        return (cue.action, 1 - distance / 420);
+      }
+    }
+    return null;
+  }
+
+  Widget _actorWithAction(Widget actor, (TheaterAction, double)? cue) {
+    if (cue == null) return actor;
+    final action = cue.$1;
+    final value = Curves.easeOut.transform(cue.$2.clamp(0, 1));
+    return switch (action) {
+      TheaterAction.jump => Transform.translate(
+        offset: Offset(0, -math.sin(value * math.pi) * 70),
+        child: actor,
+      ),
+      TheaterAction.blink => Transform.scale(
+        scaleY: value > .35 ? .12 : 1,
+        child: actor,
+      ),
+      TheaterAction.spin => Transform.rotate(
+        angle: value * math.pi * 2,
+        child: actor,
+      ),
+      TheaterAction.fly => Transform.translate(
+        offset: Offset(0, -math.sin(value * math.pi) * 45),
+        child: Transform.rotate(
+          angle: math.sin(value * math.pi) * .18,
+          child: actor,
+        ),
+      ),
+      TheaterAction.magic => Transform.scale(
+        scale: 1 + math.sin(value * math.pi) * .22,
+        child: actor,
+      ),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return AppPage(
+        title: '动画小剧场',
+        onBack: widget.onBack,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    return switch (_screen) {
+      TheaterScreen.lobby => _buildLobby(),
+      TheaterScreen.studio => _buildStudio(),
+      TheaterScreen.cinema => _buildCinema(),
+    };
+  }
+
+  Widget _buildLobby() {
+    return AppPage(
+      title: '动画小剧场',
+      onBack: widget.onBack,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 760 ? 3 : 2;
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              StoryPaper(
+                color: const Color(0xFFE8DEFF),
+                borderRadius: 30,
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    const StudioBuddy(size: 74),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LocalizedText(
+                            '让你的画演一场故事',
+                            style: TextStyle(
+                              color: _ink,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          LocalizedText(
+                            '选演员、布舞台，再用手指亲自导演三幕动画。',
+                            style: TextStyle(
+                              color: _muted,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.movie_creation_rounded,
+                      size: 54,
+                      color: Color(0xFF5D3F9D),
+                    ),
+                  ],
+                ),
+              ),
+              if (_project != null) ...[
+                const SizedBox(height: 16),
+                Material(
+                  color: const Color(0xFFFFE9AD),
+                  borderRadius: BorderRadius.circular(24),
+                  child: InkWell(
+                    key: const ValueKey('theater-continue-project'),
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: _continueProject,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.play_circle_fill_rounded, size: 38),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const LocalizedText(
+                                  '继续上次的小剧场',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                                LocalizedText(
+                                  _story.title,
+                                  style: const TextStyle(color: _muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_rounded),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 22),
+              const LocalizedText(
+                '第一步 · 选择演员',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 112,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: math.min(widget.artworks.length, 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final artwork = widget.artworks[index];
+                    final selected = artwork.id == _selectedArtworkId;
+                    return InkWell(
+                      key: ValueKey('theater-actor-${artwork.id}'),
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () =>
+                          setState(() => _selectedArtworkId = artwork.id),
+                      child: Container(
+                        width: 112,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: selected ? _orange : const Color(0xFFE4D7CB),
+                            width: selected ? 3 : 1,
+                          ),
+                        ),
+                        child: ArtworkThumbnail(artwork: artwork),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 22),
+              const LocalizedText(
+                '第二步 · 选择故事',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 12),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisExtent: 158,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                ),
+                itemCount: _theaterStories.length,
+                itemBuilder: (context, index) {
+                  final story = _theaterStories[index];
+                  return Material(
+                    color: index.isEven
+                        ? const Color(0xFFDDF4E7)
+                        : const Color(0xFFDCEFFF),
+                    borderRadius: BorderRadius.circular(25),
+                    child: InkWell(
+                      key: ValueKey('theater-story-${story.id}'),
+                      borderRadius: BorderRadius.circular(25),
+                      onTap: () => _startStory(story),
+                      child: Padding(
+                        padding: const EdgeInsets.all(15),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            LocalizedText(
+                              story.emoji,
+                              style: const TextStyle(fontSize: 34),
+                            ),
+                            const Spacer(),
+                            LocalizedText(
+                              story.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            LocalizedText(
+                              story.subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStudio() {
+    return AppPage(
+      title: '动画小剧场 · ${_story.title}',
+      onBack: () {
+        _stopRecording();
+        _controller.stop();
+        setState(() => _screen = TheaterScreen.lobby);
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 780;
+          final stage = _buildStage(cinema: false);
+          final controls = _buildDirectorPanel();
+          if (wide) {
+            return Row(
+              children: [
+                Expanded(child: stage),
+                const SizedBox(width: 16),
+                SizedBox(width: 320, child: controls),
+              ],
+            );
+          }
+          return Column(
+            children: [
+              Expanded(child: stage),
+              const SizedBox(height: 12),
+              SizedBox(height: 315, child: controls),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStage({required bool cinema}) {
+    final actIndex = cinema ? _cinemaActIndex : _project!.activeActIndex;
+    final act = _project!.acts[actIndex];
+    final scene = _story.scenes[actIndex];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stageSize = constraints.biggest;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(cinema ? 34 : 30),
+          child: GestureDetector(
+            key: ValueKey(cinema ? 'theater-cinema-stage' : 'theater-stage'),
+            behavior: HitTestBehavior.opaque,
+            onPanStart: _recording
+                ? (details) => _recordPosition(details.localPosition, stageSize)
+                : null,
+            onPanUpdate: _recording
+                ? (details) => _recordPosition(details.localPosition, stageSize)
+                : null,
+            child: CustomPaint(
+              painter: TheaterStagePainter(act.background),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      final milliseconds = _controller.isAnimating
+                          ? (_controller.value * _actDuration.inMilliseconds)
+                                .round()
+                          : act.points.isEmpty
+                          ? 0
+                          : act.points.last.milliseconds;
+                      final position = _positionAt(act, milliseconds);
+                      final cue = _activeCueAt(act, milliseconds);
+                      final width = cinema ? 184.0 : 158.0;
+                      final height = cinema ? 160.0 : 138.0;
+                      final actor = Container(
+                        width: width,
+                        height: height,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .94),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: .18),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(19),
+                          child: ArtworkThumbnail(artwork: _selectedArtwork),
+                        ),
+                      );
+                      return Positioned(
+                        left: position.dx * stageSize.width - width / 2,
+                        top: position.dy * stageSize.height - height / 2,
+                        child: IgnorePointer(
+                          child: _actorWithAction(actor, cue),
+                        ),
+                      );
+                    },
+                  ),
+                  Positioned(
+                    left: 14,
+                    top: 14,
+                    child: StoryPaper(
+                      color: Colors.white.withValues(alpha: .90),
+                      borderRadius: 19,
+                      shadow: false,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${actIndex + 1}',
+                            style: const TextStyle(
+                              color: _orange,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          LocalizedText(
+                            scene.title,
+                            style: const TextStyle(
+                              color: _ink,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_recording)
+                    const Positioned(
+                      right: 14,
+                      top: 14,
+                      child: _RecordingBadge(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDirectorPanel() {
+    final activeIndex = _project!.activeActIndex;
+    final scene = _story.scenes[activeIndex];
+    return StoryPaper(
+      color: Colors.white,
+      borderRadius: 28,
+      padding: const EdgeInsets.all(15),
+      child: ListView(
+        key: const ValueKey('theater-director-panel'),
+        children: [
+          const LocalizedText(
+            '三幕故事卡',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var index = 0; index < 3; index++) ...[
+                Expanded(
+                  child: InkWell(
+                    key: ValueKey('theater-act-$index'),
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => _selectAct(index),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: activeIndex == index
+                            ? const Color(0xFFFFE3DC)
+                            : const Color(0xFFF5EFE7),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: activeIndex == index
+                              ? _orange
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: activeIndex == index ? _orange : _brown,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Icon(
+                            _project!.acts[index].hasPerformance
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            size: 16,
+                            color: _project!.acts[index].hasPerformance
+                                ? const Color(0xFF1B7655)
+                                : _muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (index < 2) const SizedBox(width: 6),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Icon(
+                Icons.cloud_done_rounded,
+                size: 16,
+                color: Color(0xFF1B7655),
+              ),
+              SizedBox(width: 6),
+              LocalizedText(
+                '本地自动保存已开启',
+                style: TextStyle(
+                  color: Color(0xFF1B7655),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
+          LocalizedText(
+            scene.title,
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          LocalizedText(
+            scene.prompt,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 12,
+              height: 1.35,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const LocalizedText(
+            '选择舞台背景',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final background in TheaterBackground.values)
+                ChoiceChip(
+                  key: ValueKey('theater-background-${background.name}'),
+                  selected: _activeAct.background == background,
+                  selectedColor: const Color(0xFFDDF4E7),
+                  avatar: Icon(background.icon, size: 17),
+                  label: LocalizedText(
+                    background.label,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onSelected: (_) {
+                    setState(() => _activeAct.background = background);
+                    _scheduleAutosave();
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const LocalizedText(
+            '动作贴纸与音效',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final action in TheaterAction.values)
+                ActionChip(
+                  key: ValueKey('theater-action-${action.name}'),
+                  avatar: Icon(action.icon, size: 18),
+                  label: LocalizedText(action.label),
+                  onPressed: () => _addAction(action),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _recording
+                  ? const Color(0xFFFFE1DC)
+                  : const Color(0xFFFFF5D6),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: LocalizedText(
+              _recording ? '正在录制：拖动演员，并点击动作贴纸！' : '点击开始表演，再用手指拖着演员走。',
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            key: const ValueKey('theater-record-toggle'),
+            onPressed: _recording ? _stopRecording : _startRecording,
+            style: FilledButton.styleFrom(
+              backgroundColor: _recording ? const Color(0xFFB33A2B) : _orange,
+            ),
+            icon: Icon(
+              _recording ? Icons.stop_rounded : Icons.fiber_manual_record,
+            ),
+            label: LocalizedText(_recording ? '停止录制' : '开始表演'),
+          ),
+          const SizedBox(height: 7),
+          OutlinedButton.icon(
+            key: const ValueKey('theater-play-act'),
+            onPressed: _playActiveAct,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const LocalizedText('回放这一幕'),
+          ),
+          const SizedBox(height: 7),
+          FilledButton.icon(
+            key: const ValueKey('theater-premiere'),
+            onPressed: _openCinema,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF5D3F9D),
+            ),
+            icon: const Icon(Icons.theaters_rounded),
+            label: const LocalizedText('进入小小电影院'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCinema() {
+    return AppPage(
+      title: '小小电影院 · ${_story.title}',
+      onBack: () {
+        _controller.stop();
+        setState(() => _screen = TheaterScreen.studio);
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E1738),
+              borderRadius: BorderRadius.circular(34),
+              border: Border.all(color: const Color(0xFFFFD66B), width: 5),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: _buildStage(cinema: true),
+            ),
+          ),
+          Positioned(
+            left: 28,
+            right: 28,
+            bottom: 22,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var index = 0; index < 3; index++)
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    width: index == _cinemaActIndex ? 34 : 12,
+                    height: 12,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: index <= _cinemaActIndex
+                          ? const Color(0xFFFFD66B)
+                          : Colors.white38,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (_cinemaFinished)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: .52),
+                child: Center(
+                  child: StoryPaper(
+                    color: const Color(0xFFFFF8D9),
+                    borderRadius: 30,
+                    padding: const EdgeInsets.all(24),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 430),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🎬🌟🎉', style: TextStyle(fontSize: 45)),
+                          const SizedBox(height: 8),
+                          const LocalizedText(
+                            '首映成功！',
+                            style: TextStyle(
+                              color: _ink,
+                              fontSize: 27,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          LocalizedText(
+                            _earnedDirectorReward
+                                ? '获得 5 颗小导演星星！'
+                                : '这部小剧场已经获得过导演奖励啦！',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: _muted,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              OutlinedButton.icon(
+                                key: const ValueKey('theater-cinema-replay'),
+                                onPressed: () {
+                                  setState(() {
+                                    _cinemaActIndex = 0;
+                                    _cinemaFinished = false;
+                                    _lastPlaybackMilliseconds = 0;
+                                  });
+                                  _controller.forward(from: 0);
+                                },
+                                icon: const Icon(Icons.replay_rounded),
+                                label: const LocalizedText('再放一遍'),
+                              ),
+                              const SizedBox(width: 10),
+                              FilledButton.icon(
+                                key: const ValueKey('theater-back-to-edit'),
+                                onPressed: () => setState(
+                                  () => _screen = TheaterScreen.studio,
+                                ),
+                                icon: const Icon(Icons.edit_rounded),
+                                label: const LocalizedText('继续导演'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordingBadge extends StatelessWidget {
+  const _RecordingBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xFFB33A2B),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.fiber_manual_record, size: 14, color: Colors.white),
+        SizedBox(width: 5),
+        LocalizedText(
+          '表演录制中',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class TheaterStagePainter extends CustomPainter {
+  const TheaterStagePainter(this.background);
+
+  final TheaterBackground background;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final colors = switch (background) {
+      TheaterBackground.forest => const [Color(0xFFBDE8C8), Color(0xFFFAE6A4)],
+      TheaterBackground.sky => const [Color(0xFFBEE9FF), Color(0xFFFFF5CB)],
+      TheaterBackground.ocean => const [Color(0xFF8BDBED), Color(0xFF266CB0)],
+      TheaterBackground.space => const [Color(0xFF251A55), Color(0xFF090A28)],
+      TheaterBackground.castle => const [Color(0xFFF4C9EE), Color(0xFFB9D9FF)],
+    };
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colors,
+        ).createShader(Offset.zero & size),
+    );
+
+    switch (background) {
+      case TheaterBackground.forest:
+        final ground = Paint()..color = const Color(0xFF6FBC75);
+        canvas.drawRect(
+          Rect.fromLTWH(0, size.height * .72, size.width, size.height * .28),
+          ground,
+        );
+        for (var index = 0; index < 6; index++) {
+          final x = size.width * (.08 + index * .18);
+          canvas.drawRect(
+            Rect.fromCenter(
+              center: Offset(x, size.height * .58),
+              width: 18,
+              height: size.height * .30,
+            ),
+            Paint()..color = const Color(0xFF8B5D3B),
+          );
+          canvas.drawCircle(
+            Offset(x, size.height * .36),
+            size.height * .12,
+            Paint()..color = const Color(0xFF3F9962),
+          );
+        }
+      case TheaterBackground.sky:
+        for (var index = 0; index < 5; index++) {
+          final center = Offset(
+            size.width * (.12 + index * .20),
+            size.height * (.22 + (index.isEven ? .06 : .18)),
+          );
+          final cloud = Paint()..color = Colors.white.withValues(alpha: .82);
+          canvas.drawCircle(center, 30, cloud);
+          canvas.drawCircle(center + const Offset(32, 5), 24, cloud);
+          canvas.drawCircle(center + const Offset(-30, 8), 21, cloud);
+        }
+      case TheaterBackground.ocean:
+        final sand = Paint()..color = const Color(0xFFE9C981);
+        canvas.drawRect(
+          Rect.fromLTWH(0, size.height * .82, size.width, size.height * .18),
+          sand,
+        );
+        final bubble = Paint()
+          ..color = Colors.white.withValues(alpha: .42)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+        for (var index = 0; index < 18; index++) {
+          canvas.drawCircle(
+            Offset(
+              (index * 73.0) % math.max(1, size.width),
+              (index * 47.0) % math.max(1, size.height * .75),
+            ),
+            4.0 + index % 9,
+            bubble,
+          );
+        }
+      case TheaterBackground.space:
+        final star = Paint()..color = const Color(0xFFFFE47A);
+        for (var index = 0; index < 45; index++) {
+          canvas.drawCircle(
+            Offset(
+              (index * 83.0) % math.max(1, size.width),
+              (index * 57.0) % math.max(1, size.height),
+            ),
+            1.5 + index % 3,
+            star,
+          );
+        }
+        canvas.drawCircle(
+          Offset(size.width * .82, size.height * .20),
+          size.height * .11,
+          Paint()..color = const Color(0xFFB79AF2),
+        );
+      case TheaterBackground.castle:
+        final castle = Paint()..color = const Color(0xFFFFF2D4);
+        final base = Rect.fromLTWH(
+          size.width * .18,
+          size.height * .42,
+          size.width * .64,
+          size.height * .45,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(base, const Radius.circular(16)),
+          castle,
+        );
+        for (final x in [.18, .68]) {
+          canvas.drawRect(
+            Rect.fromLTWH(
+              size.width * x,
+              size.height * .28,
+              size.width * .14,
+              size.height * .58,
+            ),
+            castle,
+          );
+        }
+        canvas.drawCircle(
+          Offset(size.width * .50, size.height * .76),
+          size.height * .10,
+          Paint()..color = const Color(0xFFC38AD0),
+        );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant TheaterStagePainter oldDelegate) =>
+      oldDelegate.background != background;
+}
+
+enum ArtworkMotion { jump, blink, fly, replay }
 
 extension ArtworkMotionInfo on ArtworkMotion {
   String get label => switch (this) {
-    ArtworkMotion.breathe => '轻轻呼吸',
     ArtworkMotion.jump => '跳一跳',
     ArtworkMotion.blink => '眨眼',
     ArtworkMotion.fly => '飞起来',
@@ -6845,7 +9648,6 @@ extension ArtworkMotionInfo on ArtworkMotion {
   };
 
   IconData get icon => switch (this) {
-    ArtworkMotion.breathe => Icons.air_rounded,
     ArtworkMotion.jump => Icons.swap_vert_rounded,
     ArtworkMotion.blink => Icons.visibility_rounded,
     ArtworkMotion.fly => Icons.flight_takeoff_rounded,
@@ -6853,61 +9655,8 @@ extension ArtworkMotionInfo on ArtworkMotion {
   };
 }
 
-enum StorySticker { sparkle, moon, rainbow, flower }
-
-extension StoryStickerInfo on StorySticker {
-  String get label => switch (this) {
-    StorySticker.sparkle => '星星贴纸',
-    StorySticker.moon => '月亮贴纸',
-    StorySticker.rainbow => '彩虹贴纸',
-    StorySticker.flower => '小花贴纸',
-  };
-
-  IconData get icon => switch (this) {
-    StorySticker.sparkle => Icons.auto_awesome_rounded,
-    StorySticker.moon => Icons.nightlight_round,
-    StorySticker.rainbow => Icons.radar_rounded,
-    StorySticker.flower => Icons.local_florist_rounded,
-  };
-
-  Color get color => switch (this) {
-    StorySticker.sparkle => StudioVisuals.lemon,
-    StorySticker.moon => StudioVisuals.sky,
-    StorySticker.rainbow => StudioVisuals.coral,
-    StorySticker.flower => StudioVisuals.leaf,
-  };
-}
-
-class AnimationStoryPage {
-  const AnimationStoryPage({
-    required this.artwork,
-    required this.subtitle,
-    required this.motion,
-    required this.sticker,
-  });
-
-  final GalleryArtwork artwork;
-  final String subtitle;
-  final ArtworkMotion motion;
-  final StorySticker sticker;
-
-  AnimationStoryPage copyWith({
-    GalleryArtwork? artwork,
-    String? subtitle,
-    ArtworkMotion? motion,
-    StorySticker? sticker,
-  }) {
-    return AnimationStoryPage(
-      artwork: artwork ?? this.artwork,
-      subtitle: subtitle ?? this.subtitle,
-      motion: motion ?? this.motion,
-      sticker: sticker ?? this.sticker,
-    );
-  }
-}
-
-class AnimationPage extends StatefulWidget {
-  const AnimationPage({
+class LegacyAnimationPage extends StatefulWidget {
+  const LegacyAnimationPage({
     super.key,
     required this.onBack,
     required this.artworks,
@@ -6919,27 +9668,27 @@ class AnimationPage extends StatefulWidget {
   final StudioAudio audio;
 
   @override
-  State<AnimationPage> createState() => _AnimationPageState();
+  State<LegacyAnimationPage> createState() => _LegacyAnimationPageState();
 }
 
-class _AnimationPageState extends State<AnimationPage>
+class _LegacyAnimationPageState extends State<LegacyAnimationPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late List<AnimationStoryPage> _storyPages;
-  int _pageIndex = 0;
-  bool _captionsEnabled = true;
-  bool _musicEnabled = false;
-  bool _exporting = false;
+  ArtworkMotion _motion = ArtworkMotion.jump;
+  String? _selectedId;
 
-  AnimationStoryPage get _currentPage => _storyPages[_pageIndex];
+  GalleryArtwork get _selected => widget.artworks.firstWhere(
+    (item) => item.id == _selectedId,
+    orElse: () => widget.artworks.first,
+  );
 
   @override
   void initState() {
     super.initState();
-    _storyPages = _generateStoryPages();
+    _selectedId = widget.artworks.first.id;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 1800),
     )..repeat();
   }
 
@@ -6949,154 +9698,15 @@ class _AnimationPageState extends State<AnimationPage>
     super.dispose();
   }
 
-  List<AnimationStoryPage> _generateStoryPages() {
-    final source = widget.artworks
-        .where((artwork) => artwork.isUserCreated)
-        .followedBy(widget.artworks)
-        .toList();
-    final picked = source.take(math.min(3, source.length)).toList();
-    const subtitles = ['我的故事从第一笔开始', '画里的朋友轻轻动了起来', '最后一页，把想象留在星光里'];
-    const motions = [
-      ArtworkMotion.breathe,
-      ArtworkMotion.replay,
-      ArtworkMotion.jump,
-    ];
-    const stickers = [
-      StorySticker.sparkle,
-      StorySticker.rainbow,
-      StorySticker.moon,
-    ];
-    return [
-      for (var i = 0; i < picked.length; i++)
-        AnimationStoryPage(
-          artwork: picked[i],
-          subtitle: subtitles[i % subtitles.length],
-          motion: motions[i % motions.length],
-          sticker: stickers[i % stickers.length],
-        ),
-    ];
-  }
-
-  void _regenerateStory() {
-    setState(() {
-      _storyPages = _generateStoryPages();
-      _pageIndex = 0;
-    });
-    unawaited(widget.audio.success(context.tr('我的故事已经生成')));
-  }
-
-  void _updateCurrentPage(AnimationStoryPage page) {
-    setState(() {
-      _storyPages[_pageIndex] = page;
-    });
-  }
-
-  void _showExportMessage(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: LocalizedText(text),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _exportGif() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final bytes = await _renderStoryGif(
-        pages: _storyPages,
-        size: const Size(420, 320),
-      );
-      final path = await GalleryExportService.saveStoryFile(
-        bytes,
-        fileName:
-            'little_artist_story_${DateTime.now().millisecondsSinceEpoch}.gif',
-      );
-      _showExportMessage('GIF 已保存：$path');
-    } catch (_) {
-      _showExportMessage('GIF 导出失败，请再试一次');
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
-
-  Future<void> _exportMp4() async {
-    _showExportMessage('MP4 导出需要接入原生视频编码器，本版已准备故事板和 GIF 导出');
-  }
-
-  Future<Uint8List> _renderStoryGif({
-    required List<AnimationStoryPage> pages,
-    required Size size,
-  }) async {
-    final encoder = img.GifEncoder(delay: 12, repeat: 0, samplingFactor: 12);
-    for (final page in pages) {
-      for (var frame = 0; frame < 10; frame++) {
-        final progress = frame / 10;
-        final image = await _renderStoryFrame(page, size, progress);
-        encoder.addFrame(image, duration: 12);
-      }
-    }
-    final output = encoder.finish();
-    if (output == null) throw StateError('Could not encode story gif');
-    return Uint8List.fromList(output);
-  }
-
-  Future<img.Image> _renderStoryFrame(
-    AnimationStoryPage page,
-    Size size,
-    double progress,
-  ) async {
-    final decoded = page.artwork.pngBytes == null
-        ? null
-        : await _decodeUiImage(page.artwork.pngBytes!);
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    StoryAnimationFramePainter(
-      page: page,
-      progress: progress,
-      captionsEnabled: true,
-      decodedArtwork: decoded,
-    ).paint(canvas, size);
-    final picture = recorder.endRecording();
-    final uiImage = await picture.toImage(
-      size.width.round(),
-      size.height.round(),
-    );
-    final data = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
-    decoded?.dispose();
-    uiImage.dispose();
-    picture.dispose();
-    if (data == null) throw StateError('Could not render story frame');
-    return img.Image.fromBytes(
-      width: size.width.round(),
-      height: size.height.round(),
-      bytes: data.buffer,
-      order: img.ChannelOrder.rgba,
-    );
-  }
-
-  Future<ui.Image> _decodeUiImage(Uint8List bytes) async {
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    return frame.image;
-  }
-
-  Widget _animatedArtwork(AnimationStoryPage page) => AnimatedBuilder(
+  Widget _animatedArtwork() => AnimatedBuilder(
     animation: _controller,
-    child: ArtworkThumbnail(artwork: page.artwork),
+    child: ArtworkThumbnail(artwork: _selected),
     builder: (context, child) {
       final value = _controller.value;
-      final replayData = page.artwork.replayData;
-      return switch (page.motion) {
-        ArtworkMotion.breathe => Transform.scale(
-          scale: 1 + math.sin(value * math.pi * 2) * .035,
-          child: child,
-        ),
+      final replayData = _selected.replayData;
+      return switch (_motion) {
         ArtworkMotion.jump => Transform.translate(
-          offset: Offset(0, -math.sin(value * math.pi).abs() * 42),
+          offset: Offset(0, -math.sin(value * math.pi).abs() * 90),
           child: child,
         ),
         ArtworkMotion.blink => Transform.scale(
@@ -7104,8 +9714,8 @@ class _AnimationPageState extends State<AnimationPage>
           child: child,
         ),
         ArtworkMotion.fly => Transform.translate(
-          offset: Offset((value - .5) * 90, -math.sin(value * math.pi) * 32),
-          child: Transform.rotate(angle: (value - .5) * .08, child: child),
+          offset: Offset((value - .5) * 250, -math.sin(value * math.pi) * 80),
+          child: Transform.rotate(angle: (value - .5) * .15, child: child),
         ),
         ArtworkMotion.replay when replayData != null => CustomPaint(
           painter: StrokeReplayPainter(
@@ -7133,57 +9743,73 @@ class _AnimationPageState extends State<AnimationPage>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
-          final stage = StoryAnimationStage(
-            page: _currentPage,
-            pageNumber: _pageIndex + 1,
-            pageCount: _storyPages.length,
-            musicEnabled: _musicEnabled,
-            captionsEnabled: _captionsEnabled,
-            animatedArtwork: _animatedArtwork(_currentPage),
-            isPlaying: _controller.isAnimating,
-            onTogglePlay: () => setState(() {
-              if (_controller.isAnimating) {
-                _controller.stop();
-              } else {
-                _controller.repeat();
-              }
-            }),
+          final stage = Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFE7E0FF), Color(0xFFD8F5FF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(32),
+            ),
+            child: Stack(
+              children: [
+                const Positioned(
+                  top: 28,
+                  left: 36,
+                  child: LocalizedText(
+                    '✦',
+                    style: TextStyle(fontSize: 35, color: _orange),
+                  ),
+                ),
+                const Positioned(
+                  bottom: 34,
+                  right: 42,
+                  child: LocalizedText(
+                    '✧',
+                    style: TextStyle(fontSize: 46, color: Color(0xFF8C63E8)),
+                  ),
+                ),
+                Center(
+                  child: SizedBox(
+                    width: 280,
+                    height: 250,
+                    child: _animatedArtwork(),
+                  ),
+                ),
+                Positioned(
+                  right: 14,
+                  top: 14,
+                  child: IconButton.filled(
+                    key: const ValueKey('animation-play-toggle'),
+                    tooltip: context.tr(
+                      _controller.isAnimating ? '暂停动画' : '播放动画',
+                    ),
+                    onPressed: () => setState(() {
+                      if (_controller.isAnimating) {
+                        _controller.stop();
+                      } else {
+                        _controller.repeat();
+                      }
+                    }),
+                    icon: Icon(
+                      _controller.isAnimating
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
-          final controls = StoryPaper(
-            color: StudioVisuals.paper,
-            borderRadius: 28,
+          final controls = Container(
             padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
             child: ListView(
               children: [
-                FilledButton.icon(
-                  key: const ValueKey('animation-generate-story'),
-                  onPressed: _regenerateStory,
-                  icon: const Icon(Icons.auto_stories_rounded),
-                  label: const LocalizedText('一键生成我的故事'),
-                ),
-                const SizedBox(height: 14),
-                const LocalizedText(
-                  '多页绘本故事板',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (var index = 0; index < _storyPages.length; index++)
-                      ChoiceChip(
-                        key: ValueKey('animation-story-page-$index'),
-                        selected: _pageIndex == index,
-                        label: LocalizedText('第 ${index + 1} 页'),
-                        selectedColor: _mint,
-                        onSelected: (_) => setState(() {
-                          _pageIndex = index;
-                        }),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
                 const LocalizedText(
                   '选择一幅作品',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
@@ -7199,21 +9825,17 @@ class _AnimationPageState extends State<AnimationPage>
                       final artwork = widget.artworks[index];
                       return InkWell(
                         key: ValueKey('animation-artwork-${artwork.id}'),
-                        onTap: () => _updateCurrentPage(
-                          _currentPage.copyWith(artwork: artwork),
-                        ),
+                        onTap: () => setState(() => _selectedId = artwork.id),
                         child: Container(
                           width: 86,
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: _currentPage.artwork.id == artwork.id
+                              color: _selectedId == artwork.id
                                   ? _orange
                                   : const Color(0xFFE8D9CA),
-                              width: _currentPage.artwork.id == artwork.id
-                                  ? 3
-                                  : 1,
+                              width: _selectedId == artwork.id ? 3 : 1,
                             ),
                           ),
                           child: ArtworkThumbnail(artwork: artwork),
@@ -7233,87 +9855,17 @@ class _AnimationPageState extends State<AnimationPage>
                     padding: const EdgeInsets.only(bottom: 7),
                     child: ChoiceChip(
                       key: ValueKey('animation-motion-${motion.name}'),
-                      selected: _currentPage.motion == motion,
+                      selected: _motion == motion,
                       selectedColor: _rose,
                       avatar: Icon(motion.icon, size: 19),
                       label: LocalizedText(motion.label),
                       onSelected: (_) {
-                        _updateCurrentPage(
-                          _currentPage.copyWith(motion: motion),
-                        );
+                        setState(() => _motion = motion);
                         _controller.repeat(period: _controller.duration);
                         unawaited(widget.audio.tap());
                       },
                     ),
                   ),
-                const SizedBox(height: 12),
-                const LocalizedText(
-                  '贴纸和字幕',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final sticker in StorySticker.values)
-                      ChoiceChip(
-                        selected: _currentPage.sticker == sticker,
-                        selectedColor: sticker.color,
-                        avatar: Icon(sticker.icon, size: 18),
-                        label: LocalizedText(sticker.label),
-                        onSelected: (_) => _updateCurrentPage(
-                          _currentPage.copyWith(sticker: sticker),
-                        ),
-                      ),
-                  ],
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const LocalizedText(
-                    '显示字幕',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  value: _captionsEnabled,
-                  onChanged: (value) =>
-                      setState(() => _captionsEnabled = value),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const LocalizedText(
-                    '轻柔背景音乐',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  subtitle: const LocalizedText('播放时使用克制的声音提示'),
-                  value: _musicEnabled,
-                  onChanged: (value) {
-                    setState(() => _musicEnabled = value);
-                    unawaited(
-                      value
-                          ? widget.audio.speak(context.tr('轻柔背景音乐已开启'))
-                          : widget.audio.tap(),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  key: const ValueKey('animation-export-gif'),
-                  onPressed: _exporting ? null : _exportGif,
-                  icon: _exporting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.gif_box_rounded),
-                  label: LocalizedText(_exporting ? '正在导出 GIF…' : '保存 GIF'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('animation-export-mp4'),
-                  onPressed: _exportMp4,
-                  icon: const Icon(Icons.movie_creation_rounded),
-                  label: const LocalizedText('保存 MP4'),
-                ),
               ],
             ),
           );
@@ -7336,358 +9888,6 @@ class _AnimationPageState extends State<AnimationPage>
         },
       ),
     );
-  }
-}
-
-class StoryAnimationStage extends StatelessWidget {
-  const StoryAnimationStage({
-    super.key,
-    required this.page,
-    required this.pageNumber,
-    required this.pageCount,
-    required this.musicEnabled,
-    required this.captionsEnabled,
-    required this.animatedArtwork,
-    required this.isPlaying,
-    required this.onTogglePlay,
-  });
-
-  final AnimationStoryPage page;
-  final int pageNumber;
-  final int pageCount;
-  final bool musicEnabled;
-  final bool captionsEnabled;
-  final Widget animatedArtwork;
-  final bool isPlaying;
-  final VoidCallback onTogglePlay;
-
-  @override
-  Widget build(BuildContext context) {
-    return StoryPaper(
-      color: const Color(0xFFFFF8E8),
-      borderRadius: 32,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: StoryAnimationBackdropPainter(sticker: page.sticker),
-            ),
-          ),
-          Positioned(
-            left: 18,
-            top: 16,
-            child: StoryPaper(
-              color: Colors.white.withValues(alpha: .88),
-              borderRadius: 99,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              shadow: false,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(page.motion.icon, size: 17, color: _brown),
-                  const SizedBox(width: 6),
-                  LocalizedText(
-                    '第 $pageNumber / $pageCount 页',
-                    style: const TextStyle(
-                      color: _ink,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            right: 18,
-            top: 16,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (musicEnabled)
-                  StoryPaper(
-                    color: StudioVisuals.leaf.withValues(alpha: .70),
-                    borderRadius: 99,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    shadow: false,
-                    child: const Icon(
-                      Icons.music_note_rounded,
-                      color: _ink,
-                      size: 18,
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  key: const ValueKey('animation-play-toggle'),
-                  tooltip: context.tr(isPlaying ? '暂停动画' : '播放动画'),
-                  onPressed: onTogglePlay,
-                  icon: Icon(
-                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Center(
-            child: SizedBox(width: 300, height: 260, child: animatedArtwork),
-          ),
-          Positioned(
-            right: 46,
-            bottom: 88,
-            child: StoryStickerChip(sticker: page.sticker, large: true),
-          ),
-          if (captionsEnabled)
-            Positioned(
-              left: 26,
-              right: 26,
-              bottom: 24,
-              child: StoryPaper(
-                color: Colors.white.withValues(alpha: .90),
-                borderRadius: 24,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 12,
-                ),
-                shadow: false,
-                child: LocalizedText(
-                  page.subtitle,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 18,
-                    height: 1.25,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class StoryStickerChip extends StatelessWidget {
-  const StoryStickerChip({
-    super.key,
-    required this.sticker,
-    this.large = false,
-  });
-
-  final StorySticker sticker;
-  final bool large;
-
-  @override
-  Widget build(BuildContext context) {
-    return StoryPaper(
-      color: sticker.color.withValues(alpha: .84),
-      borderRadius: 99,
-      padding: EdgeInsets.all(large ? 13 : 8),
-      shadow: false,
-      child: Icon(sticker.icon, color: _ink, size: large ? 30 : 18),
-    );
-  }
-}
-
-class StoryAnimationBackdropPainter extends CustomPainter {
-  const StoryAnimationBackdropPainter({required this.sticker});
-
-  final StorySticker sticker;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final wash = Paint()
-      ..style = PaintingStyle.fill
-      ..color = sticker.color.withValues(alpha: .12);
-    canvas.drawCircle(Offset(size.width * .18, size.height * .24), 92, wash);
-    canvas.drawCircle(
-      Offset(size.width * .82, size.height * .70),
-      118,
-      wash..color = StudioVisuals.sky.withValues(alpha: .10),
-    );
-    final line = Paint()
-      ..color = _brown.withValues(alpha: .10)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < 12; i++) {
-      final y = 54.0 + i * 22;
-      canvas.drawLine(
-        Offset(26 + (i % 3) * 8, y),
-        Offset(size.width - 30 - (i % 4) * 9, y + math.sin(i) * 5),
-        line,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant StoryAnimationBackdropPainter oldDelegate) =>
-      oldDelegate.sticker != sticker;
-}
-
-class StoryAnimationFramePainter extends CustomPainter {
-  const StoryAnimationFramePainter({
-    required this.page,
-    required this.progress,
-    required this.captionsEnabled,
-    this.decodedArtwork,
-  });
-
-  final AnimationStoryPage page;
-  final double progress;
-  final bool captionsEnabled;
-  final ui.Image? decodedArtwork;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFFFFF8E8),
-    );
-    StoryAnimationBackdropPainter(sticker: page.sticker).paint(canvas, size);
-
-    final artworkRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * .46),
-      width: size.width * .56,
-      height: size.height * .50,
-    );
-    canvas.save();
-    final transform = _motionOffset(page.motion, progress);
-    canvas.translate(transform.dx, transform.dy);
-    final scale = page.motion == ArtworkMotion.breathe
-        ? 1 + math.sin(progress * math.pi * 2) * .035
-        : 1.0;
-    canvas.translate(artworkRect.center.dx, artworkRect.center.dy);
-    canvas.scale(scale);
-    canvas.translate(-artworkRect.center.dx, -artworkRect.center.dy);
-    _paintArtwork(canvas, artworkRect);
-    canvas.restore();
-
-    _paintSticker(canvas, Offset(size.width * .76, size.height * .68));
-    if (captionsEnabled) _paintCaption(canvas, size);
-  }
-
-  Offset _motionOffset(ArtworkMotion motion, double value) {
-    return switch (motion) {
-      ArtworkMotion.breathe => Offset.zero,
-      ArtworkMotion.blink => Offset.zero,
-      ArtworkMotion.jump => Offset(0, -math.sin(value * math.pi).abs() * 22),
-      ArtworkMotion.fly => Offset(
-        (value - .5) * 50,
-        -math.sin(value * math.pi) * 20,
-      ),
-      ArtworkMotion.replay => Offset.zero,
-    };
-  }
-
-  void _paintArtwork(Canvas canvas, Rect rect) {
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(20));
-    canvas.drawRRect(rrect, Paint()..color = page.artwork.color);
-    canvas.save();
-    canvas.clipRRect(rrect);
-    if (page.motion == ArtworkMotion.replay &&
-        page.artwork.replayData != null) {
-      canvas.save();
-      canvas.translate(rect.left, rect.top);
-      StrokeReplayPainter(
-        replayData: page.artwork.replayData!,
-        progress: progress,
-      ).paint(canvas, rect.size);
-      canvas.restore();
-    } else if (decodedArtwork != null) {
-      canvas.drawImageRect(
-        decodedArtwork!,
-        Rect.fromLTWH(
-          0,
-          0,
-          decodedArtwork!.width.toDouble(),
-          decodedArtwork!.height.toDouble(),
-        ),
-        rect.deflate(10),
-        Paint(),
-      );
-    } else {
-      canvas.save();
-      canvas.translate(rect.left + 10, rect.top + 10);
-      SketchPainter(
-        page.artwork.kind ?? SketchKind.sun,
-      ).paint(canvas, Size(rect.width - 20, rect.height - 20));
-      canvas.restore();
-    }
-    if (page.motion == ArtworkMotion.blink &&
-        progress > .42 &&
-        progress < .52) {
-      canvas.drawRect(
-        rect.deflate(24),
-        Paint()..color = Colors.white.withValues(alpha: .34),
-      );
-    }
-    canvas.restore();
-  }
-
-  void _paintSticker(Canvas canvas, Offset center) {
-    final paint = Paint()..color = page.sticker.color.withValues(alpha: .88);
-    canvas.drawCircle(center, 24, paint);
-    final iconPainter = TextPainter(
-      text: TextSpan(
-        text: switch (page.sticker) {
-          StorySticker.sparkle => '*',
-          StorySticker.moon => ')',
-          StorySticker.rainbow => '~',
-          StorySticker.flower => '+',
-        },
-        style: const TextStyle(
-          color: _ink,
-          fontSize: 30,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    iconPainter.paint(
-      canvas,
-      center - Offset(iconPainter.width / 2, iconPainter.height / 2),
-    );
-  }
-
-  void _paintCaption(Canvas canvas, Size size) {
-    final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(30, size.height - 70, size.width - 60, 46),
-      const Radius.circular(18),
-    );
-    canvas.drawRRect(
-      rect,
-      Paint()..color = Colors.white.withValues(alpha: .90),
-    );
-    final painter = TextPainter(
-      text: TextSpan(
-        text: page.subtitle,
-        style: const TextStyle(
-          color: _ink,
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      maxLines: 2,
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: size.width - 86);
-    painter.paint(
-      canvas,
-      Offset((size.width - painter.width) / 2, size.height - 58),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant StoryAnimationFramePainter oldDelegate) {
-    return oldDelegate.page != page ||
-        oldDelegate.progress != progress ||
-        oldDelegate.captionsEnabled != captionsEnabled ||
-        oldDelegate.decodedArtwork != decodedArtwork;
   }
 }
 
