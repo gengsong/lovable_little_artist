@@ -342,11 +342,43 @@ class LocalArtistStore implements ArtistStore {
   }
 
   Future<void> _writeJsonAtomic(File file, Object value) async {
-    final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(jsonEncode(value), flush: true);
-    if (await file.exists()) await file.delete();
-    await temporary.rename(file.path);
+    const int maxAttempts = 3;
+    var attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        final temporary = File('${file.path}.tmp');
+        await temporary.writeAsString(jsonEncode(value), flush: true);
+        if (await file.exists()) await file.delete();
+        await temporary.rename(file.path);
+        return;
+      } catch (e) {
+        if (attempt >= maxAttempts) rethrow;
+        // exponential backoff
+        await Future.delayed(Duration(milliseconds: 100 * (1 << attempt)));
+      }
+    }
   }
 
   String _safeKey(String key) => key.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+  /// Returns a File pointing to an artwork image if it exists, otherwise null.
+  Future<File?> getArtworkFile(String fileName) async {
+    final root = await _ensureRoot();
+    if (root == null) return null;
+    final file = File('${root.path}/artworks/$fileName');
+    if (!await file.exists()) return null;
+    return file;
+  }
+
+  /// Reads artwork bytes on demand. Returns null if the file is missing or unreadable.
+  Future<Uint8List?> readArtworkBytes(String fileName) async {
+    try {
+      final file = await getArtworkFile(fileName);
+      if (file == null) return null;
+      return await file.readAsBytes();
+    } catch (_) {
+      return null;
+    }
+  }
 }

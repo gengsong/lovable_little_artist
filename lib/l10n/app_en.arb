@@ -1,0 +1,14 @@
+{
+  "@@locale": "en",
+  "appTitle": "Little Art Studio",
+  "@appTitle": {
+    "description": "Application title"
+  },
+  "home": "Home",
+  "draw": "Draw",
+  "coloring": "Coloring",
+  "lessons": "Lessons",
+  "gallery": "Gallery",
+  "animation": "Animation",
+  "parent": "Parent"
+}

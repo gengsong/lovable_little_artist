@@ -9,6 +9,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
 import 'package:lovable_little_artist/studio_localizations.dart';
+import 'package:lovable_little_artist/core/theme/app_colors.dart';
+import 'package:lovable_little_artist/core/theme/app_theme.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,15 +22,16 @@ Future<void> main() async {
   runApp(const LittleArtistVerseApp());
 }
 
-const _bg = Color(0xFFFFF9EC);
-const _ink = Color(0xFF3A1D10);
-const _muted = Color(0xFF8A6D5E);
-const _peach = Color(0xFFF9DDD1);
-const _mint = Color(0xFFD2F2DC);
-const _butter = Color(0xFFFFEAB0);
-const _rose = Color(0xFFF2DEE8);
-const _orange = Color(0xFFFF6B53);
-const _brown = Color(0xFF8A6D5E);
+// 保留向后兼容的颜色常量
+const _bg = AppColors.background;
+const _ink = AppColors.ink;
+const _muted = AppColors.muted;
+const _peach = AppColors.peach;
+const _mint = AppColors.mint;
+const _butter = AppColors.butter;
+const _rose = AppColors.rose;
+const _orange = AppColors.orange;
+const _brown = AppColors.brown;
 
 void _ignoreStorageError(Future<void> operation) {
   unawaited(operation.catchError((Object _) {}));
@@ -58,18 +62,7 @@ class _LittleArtistVerseAppState extends State<LittleArtistVerseApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: _bg,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _orange,
-          brightness: Brightness.light,
-        ),
-        textTheme: ThemeData.light().textTheme.apply(
-          bodyColor: _ink,
-          displayColor: _ink,
-        ),
-      ),
+      theme: AppTheme.lightTheme,
       home: StudioHome(
         store: _store,
         onLocaleChanged: (locale) => setState(() => _locale = locale),
@@ -1407,7 +1400,25 @@ class SketchPainter extends CustomPainter {
       oldDelegate.kind != kind;
 }
 
-enum ColoringTemplate { butterfly, rabbit, pony, penguin, fish, flower, rocket }
+enum ColoringTemplate {
+  butterfly,
+  rabbit,
+  pony,
+  penguin,
+  fish,
+  flower,
+  rocket,
+  kitten,
+  puppy,
+  dinosaur,
+  turtle,
+  owl,
+  whale,
+  ladybug,
+  snail,
+}
+
+const _coloringPaperColor = Colors.white;
 
 extension ColoringTemplateInfo on ColoringTemplate {
   String get title => switch (this) {
@@ -1418,6 +1429,14 @@ extension ColoringTemplateInfo on ColoringTemplate {
     ColoringTemplate.fish => '海底小鱼',
     ColoringTemplate.flower => '微笑花朵',
     ColoringTemplate.rocket => '太空火箭',
+    ColoringTemplate.kitten => '甜甜小猫',
+    ColoringTemplate.puppy => '快乐小狗',
+    ColoringTemplate.dinosaur => '萌萌小恐龙',
+    ColoringTemplate.turtle => '慢慢小乌龟',
+    ColoringTemplate.owl => '智慧猫头鹰',
+    ColoringTemplate.whale => '喷水小鲸鱼',
+    ColoringTemplate.ladybug => '幸运小瓢虫',
+    ColoringTemplate.snail => '散步小蜗牛',
   };
 
   String get emoji => switch (this) {
@@ -1428,6 +1447,14 @@ extension ColoringTemplateInfo on ColoringTemplate {
     ColoringTemplate.fish => '🐠',
     ColoringTemplate.flower => '🌼',
     ColoringTemplate.rocket => '🚀',
+    ColoringTemplate.kitten => '🐱',
+    ColoringTemplate.puppy => '🐶',
+    ColoringTemplate.dinosaur => '🦕',
+    ColoringTemplate.turtle => '🐢',
+    ColoringTemplate.owl => '🦉',
+    ColoringTemplate.whale => '🐳',
+    ColoringTemplate.ladybug => '🐞',
+    ColoringTemplate.snail => '🐌',
   };
 }
 
@@ -1663,6 +1690,224 @@ List<_ColoringRegion> _coloringRegions(ColoringTemplate template) {
             ..close(),
           const Color(0xFFFFA45B),
         ),
+      ];
+    case ColoringTemplate.kitten:
+      return [
+        _ColoringRegion(oval(205, 205, 395, 425), const Color(0xFFFFE2B8)),
+        _ColoringRegion(oval(165, 72, 435, 305), const Color(0xFFFFE2B8)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(185, 125)
+            ..lineTo(195, 28)
+            ..lineTo(275, 92)
+            ..close(),
+          const Color(0xFFFFD8D0),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(325, 92)
+            ..lineTo(405, 28)
+            ..lineTo(415, 125)
+            ..close(),
+          const Color(0xFFFFD8D0),
+        ),
+        _ColoringRegion(oval(240, 190, 360, 275), Colors.white),
+        _ColoringRegion(oval(195, 350, 285, 425), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(315, 350, 405, 425), const Color(0xFFFFEAB0)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(390, 280)
+            ..cubicTo(520, 245, 525, 390, 430, 370)
+            ..cubicTo(485, 345, 455, 310, 390, 330)
+            ..close(),
+          const Color(0xFFFFE2B8),
+        ),
+      ];
+    case ColoringTemplate.puppy:
+      return [
+        _ColoringRegion(oval(205, 215, 395, 425), const Color(0xFFD8EEFF)),
+        _ColoringRegion(oval(175, 70, 425, 315), const Color(0xFFFFF4EA)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(205, 100)
+            ..cubicTo(105, 65, 95, 220, 185, 255)
+            ..cubicTo(225, 210, 238, 145, 205, 100)
+            ..close(),
+          const Color(0xFFFFC58F),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(395, 100)
+            ..cubicTo(495, 65, 505, 220, 415, 255)
+            ..cubicTo(375, 210, 362, 145, 395, 100)
+            ..close(),
+          const Color(0xFFFFC58F),
+        ),
+        _ColoringRegion(oval(235, 190, 365, 285), Colors.white),
+        _ColoringRegion(oval(208, 125, 282, 205), const Color(0xFFD8EEFF)),
+        _ColoringRegion(oval(315, 350, 410, 425), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(190, 350, 285, 425), const Color(0xFFFFEAB0)),
+      ];
+    case ColoringTemplate.dinosaur:
+      return [
+        _ColoringRegion(oval(120, 145, 435, 345), const Color(0xFFD2F2DC)),
+        _ColoringRegion(oval(360, 88, 525, 235), const Color(0xFFD2F2DC)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(145, 185)
+            ..cubicTo(65, 165, 30, 115, 48, 82)
+            ..cubicTo(105, 138, 165, 143, 205, 190)
+            ..close(),
+          const Color(0xFFD2F2DC),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(170, 315)
+            ..lineTo(245, 315)
+            ..lineTo(225, 425)
+            ..lineTo(165, 425)
+            ..close(),
+          const Color(0xFFFFEAB0),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(330, 315)
+            ..lineTo(400, 310)
+            ..lineTo(420, 425)
+            ..lineTo(360, 425)
+            ..close(),
+          const Color(0xFFFFEAB0),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(175, 157)
+            ..lineTo(215, 77)
+            ..lineTo(255, 151)
+            ..lineTo(300, 65)
+            ..lineTo(340, 153)
+            ..lineTo(382, 83)
+            ..lineTo(405, 165)
+            ..close(),
+          const Color(0xFFFFD8D0),
+        ),
+        _ColoringRegion(oval(235, 205, 315, 280), const Color(0xFFD8EEFF)),
+      ];
+    case ColoringTemplate.turtle:
+      return [
+        _ColoringRegion(oval(125, 90, 445, 340), const Color(0xFFD2F2DC)),
+        _ColoringRegion(oval(415, 175, 545, 280), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(105, 285, 225, 380), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(335, 285, 455, 380), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(120, 65, 230, 155), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(345, 65, 455, 155), const Color(0xFFFFEAB0)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(130, 205)
+            ..lineTo(55, 235)
+            ..lineTo(135, 265)
+            ..close(),
+          const Color(0xFFD2F2DC),
+        ),
+        _ColoringRegion(oval(185, 130, 300, 250), const Color(0xFFFFD8D0)),
+        _ColoringRegion(oval(285, 165, 395, 285), const Color(0xFFD8EEFF)),
+      ];
+    case ColoringTemplate.owl:
+      return [
+        _ColoringRegion(oval(170, 55, 430, 415), const Color(0xFFFFE2B8)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(205, 175)
+            ..cubicTo(105, 220, 145, 355, 230, 330)
+            ..close(),
+          const Color(0xFFFFD8D0),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(395, 175)
+            ..cubicTo(495, 220, 455, 355, 370, 330)
+            ..close(),
+          const Color(0xFFD8EEFF),
+        ),
+        _ColoringRegion(oval(195, 105, 305, 220), Colors.white),
+        _ColoringRegion(oval(295, 105, 405, 220), Colors.white),
+        _ColoringRegion(
+          Path()
+            ..moveTo(275, 205)
+            ..lineTo(325, 205)
+            ..lineTo(300, 250)
+            ..close(),
+          const Color(0xFFFFEAB0),
+        ),
+        _ColoringRegion(oval(225, 240, 375, 380), const Color(0xFFFFF4EA)),
+        _ColoringRegion(oval(195, 380, 285, 430), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(315, 380, 405, 430), const Color(0xFFFFEAB0)),
+      ];
+    case ColoringTemplate.whale:
+      return [
+        _ColoringRegion(oval(70, 135, 470, 345), const Color(0xFFD8EEFF)),
+        _ColoringRegion(
+          Path()
+            ..moveTo(445, 205)
+            ..cubicTo(500, 115, 575, 135, 535, 225)
+            ..cubicTo(585, 290, 500, 325, 450, 260)
+            ..close(),
+          const Color(0xFFD8EEFF),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(270, 270)
+            ..quadraticBezierTo(350, 390, 410, 285)
+            ..close(),
+          const Color(0xFFD2F2DC),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(82, 245)
+            ..quadraticBezierTo(235, 365, 415, 300)
+            ..quadraticBezierTo(250, 370, 110, 315)
+            ..close(),
+          Colors.white,
+        ),
+      ];
+    case ColoringTemplate.ladybug:
+      return [
+        _ColoringRegion(
+          Path()
+            ..moveTo(300, 92)
+            ..cubicTo(120, 95, 105, 355, 300, 395)
+            ..close(),
+          const Color(0xFFFF6B53),
+        ),
+        _ColoringRegion(
+          Path()
+            ..moveTo(300, 92)
+            ..cubicTo(480, 95, 495, 355, 300, 395)
+            ..close(),
+          const Color(0xFFFF6B53),
+        ),
+        _ColoringRegion(oval(215, 42, 385, 170), const Color(0xFF8A6D5E)),
+        _ColoringRegion(oval(190, 150, 245, 205), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(355, 150, 410, 205), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(165, 250, 225, 310), const Color(0xFFD8EEFF)),
+        _ColoringRegion(oval(375, 250, 435, 310), const Color(0xFFD8EEFF)),
+      ];
+    case ColoringTemplate.snail:
+      return [
+        _ColoringRegion(
+          Path()
+            ..moveTo(210, 280)
+            ..cubicTo(315, 255, 390, 290, 460, 285)
+            ..cubicTo(540, 280, 555, 355, 475, 375)
+            ..lineTo(155, 375)
+            ..cubicTo(100, 370, 105, 320, 210, 280)
+            ..close(),
+          const Color(0xFFFFEAB0),
+        ),
+        _ColoringRegion(oval(95, 65, 365, 335), const Color(0xFFFFD8D0)),
+        _ColoringRegion(oval(155, 125, 305, 275), const Color(0xFFD8EEFF)),
+        _ColoringRegion(oval(410, 180, 535, 310), const Color(0xFFFFEAB0)),
+        _ColoringRegion(oval(425, 138, 465, 180), Colors.white),
+        _ColoringRegion(oval(500, 138, 540, 180), Colors.white),
       ];
   }
 }
@@ -2041,10 +2286,7 @@ class ColoringPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFFFFFEFB),
-    );
+    canvas.drawRect(Offset.zero & size, Paint()..color = _coloringPaperColor);
     canvas.save();
     canvas.scale(size.width / 600, size.height / 440);
     final regions = _coloringRegions(template);
@@ -2052,7 +2294,9 @@ class ColoringPainter extends CustomPainter {
       final region = regions[index];
       canvas.drawPath(
         region.path,
-        Paint()..color = fills[index] ?? region.baseColor,
+        // Keep a fresh coloring sheet white. A region only gains color after
+        // the child deliberately chooses a color and taps it.
+        Paint()..color = fills[index] ?? _coloringPaperColor,
       );
       canvas.drawPath(
         region.path,
@@ -2155,6 +2399,135 @@ class ColoringPainter extends CustomPainter {
           const Offset(300, 183),
           18,
           Paint()..color = Colors.white.withValues(alpha: .55),
+        );
+      case ColoringTemplate.kitten:
+        canvas.drawCircle(const Offset(250, 175), 7, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(350, 175), 7, Paint()..color = _ink);
+        canvas.drawPath(
+          Path()
+            ..moveTo(290, 215)
+            ..lineTo(310, 215)
+            ..lineTo(300, 230)
+            ..close(),
+          Paint()..color = _orange,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(266, 220, 300, 252),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(300, 220, 334, 252),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        for (final y in [215.0, 230.0]) {
+          canvas.drawLine(Offset(230, y), Offset(275, y + 5), detail);
+          canvas.drawLine(Offset(370, y), Offset(325, y + 5), detail);
+        }
+      case ColoringTemplate.puppy:
+        canvas.drawCircle(const Offset(255, 172), 7, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(345, 172), 7, Paint()..color = _ink);
+        canvas.drawOval(
+          const Rect.fromLTRB(280, 210, 320, 238),
+          Paint()..color = _ink,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(267, 225, 333, 274),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+      case ColoringTemplate.dinosaur:
+        canvas.drawCircle(const Offset(460, 145), 7, Paint()..color = _ink);
+        canvas.drawArc(
+          const Rect.fromLTRB(440, 160, 500, 205),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        canvas.drawCircle(const Offset(210, 220), 6, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(275, 250), 6, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(340, 215), 6, Paint()..color = _ink);
+      case ColoringTemplate.turtle:
+        canvas.drawCircle(const Offset(500, 215), 7, Paint()..color = _ink);
+        canvas.drawArc(
+          const Rect.fromLTRB(468, 220, 525, 260),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        canvas.drawLine(const Offset(282, 95), const Offset(285, 335), detail);
+        canvas.drawLine(const Offset(145, 215), const Offset(435, 215), detail);
+      case ColoringTemplate.owl:
+        canvas.drawCircle(const Offset(250, 163), 13, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(350, 163), 13, Paint()..color = _ink);
+        canvas.drawArc(
+          const Rect.fromLTRB(260, 265, 340, 325),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        canvas.drawLine(const Offset(255, 300), const Offset(280, 330), detail);
+        canvas.drawLine(const Offset(300, 300), const Offset(300, 340), detail);
+        canvas.drawLine(const Offset(345, 300), const Offset(320, 330), detail);
+      case ColoringTemplate.whale:
+        canvas.drawCircle(const Offset(165, 205), 8, Paint()..color = _ink);
+        canvas.drawArc(
+          const Rect.fromLTRB(105, 220, 205, 290),
+          -.2,
+          1.35,
+          false,
+          detail,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(185, 55, 270, 165),
+          math.pi * .85,
+          math.pi * .45,
+          false,
+          detail,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(245, 55, 330, 165),
+          math.pi * .7,
+          math.pi * .45,
+          false,
+          detail,
+        );
+      case ColoringTemplate.ladybug:
+        canvas.drawLine(const Offset(300, 105), const Offset(300, 390), detail);
+        canvas.drawLine(const Offset(250, 55), const Offset(215, 18), detail);
+        canvas.drawLine(const Offset(350, 55), const Offset(385, 18), detail);
+        canvas.drawCircle(const Offset(215, 18), 7, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(385, 18), 7, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(265, 105), 6, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(335, 105), 6, Paint()..color = _ink);
+      case ColoringTemplate.snail:
+        canvas.drawLine(const Offset(445, 200), const Offset(445, 155), detail);
+        canvas.drawLine(const Offset(515, 200), const Offset(520, 155), detail);
+        canvas.drawCircle(const Offset(445, 158), 5, Paint()..color = _ink);
+        canvas.drawCircle(const Offset(520, 158), 5, Paint()..color = _ink);
+        canvas.drawArc(
+          const Rect.fromLTRB(445, 225, 515, 275),
+          0,
+          math.pi,
+          false,
+          detail,
+        );
+        canvas.drawArc(
+          const Rect.fromLTRB(140, 110, 320, 295),
+          -.2,
+          math.pi * 1.65,
+          false,
+          detail,
         );
     }
     canvas.restore();
@@ -4302,6 +4675,73 @@ class LessonGuidePainter extends CustomPainter {
               ? _orange.withValues(alpha: .62)
               : _brown.withValues(alpha: .28));
 
+  void _strokePath(Canvas canvas, Path path, Paint paint, double scale) {
+    if (preview) {
+      canvas.drawPath(path, paint);
+      return;
+    }
+    final dashed = Path();
+    final dashLength = 12 * scale;
+    final gapLength = 10 * scale;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + dashLength, metric.length);
+        dashed.addPath(metric.extractPath(distance, end), Offset.zero);
+        distance = end + gapLength;
+      }
+    }
+    canvas.drawPath(dashed, paint);
+  }
+
+  void _strokeCircle(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Paint paint,
+    double scale,
+  ) => _strokePath(
+    canvas,
+    Path()..addOval(Rect.fromCircle(center: center, radius: radius)),
+    paint,
+    scale,
+  );
+
+  void _strokeOval(Canvas canvas, Rect rect, Paint paint, double scale) =>
+      _strokePath(canvas, Path()..addOval(rect), paint, scale);
+
+  void _strokeRRect(Canvas canvas, RRect rect, Paint paint, double scale) =>
+      _strokePath(canvas, Path()..addRRect(rect), paint, scale);
+
+  void _strokeArc(
+    Canvas canvas,
+    Rect rect,
+    double startAngle,
+    double sweepAngle,
+    Paint paint,
+    double scale,
+  ) => _strokePath(
+    canvas,
+    Path()..addArc(rect, startAngle, sweepAngle),
+    paint,
+    scale,
+  );
+
+  void _strokeLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint,
+    double scale,
+  ) => _strokePath(
+    canvas,
+    Path()
+      ..moveTo(start.dx, start.dy)
+      ..lineTo(end.dx, end.dy),
+    paint,
+    scale,
+  );
+
   @override
   void paint(Canvas canvas, Size size) {
     final unit = math.min(size.width, size.height);
@@ -4324,7 +4764,7 @@ class LessonGuidePainter extends CustomPainter {
 
   void _paintCat(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawCircle(Offset(0, 4 * s), 72 * s, _linePaint(0, s));
+      _strokeCircle(canvas, Offset(0, 4 * s), 72 * s, _linePaint(0, s), s);
     }
     if (visibleSteps >= 2) {
       final leftEar = Path()
@@ -4335,12 +4775,13 @@ class LessonGuidePainter extends CustomPainter {
         ..moveTo(58 * s, -39 * s)
         ..lineTo(47 * s, -102 * s)
         ..lineTo(12 * s, -62 * s);
-      canvas.drawPath(leftEar, _linePaint(1, s));
-      canvas.drawPath(rightEar, _linePaint(1, s));
+      _strokePath(canvas, leftEar, _linePaint(1, s), s);
+      _strokePath(canvas, rightEar, _linePaint(1, s), s);
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(-27 * s, -3 * s),
           width: 25 * s,
@@ -4348,10 +4789,11 @@ class LessonGuidePainter extends CustomPainter {
         ),
         .12,
         math.pi * .78,
-        false,
         paint,
+        s,
       );
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(27 * s, -3 * s),
           width: 25 * s,
@@ -4359,14 +4801,15 @@ class LessonGuidePainter extends CustomPainter {
         ),
         .12,
         math.pi * .78,
-        false,
         paint,
+        s,
       );
       canvas.drawCircle(Offset(0, 18 * s), 5 * s, _dotPaint(2));
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(-8 * s, 28 * s),
           width: 18 * s,
@@ -4374,10 +4817,11 @@ class LessonGuidePainter extends CustomPainter {
         ),
         0,
         math.pi,
-        false,
         paint,
+        s,
       );
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(8 * s, 28 * s),
           width: 18 * s,
@@ -4385,19 +4829,23 @@ class LessonGuidePainter extends CustomPainter {
         ),
         0,
         math.pi,
-        false,
         paint,
+        s,
       );
       for (final y in [19.0, 31.0, 43.0]) {
-        canvas.drawLine(
+        _strokeLine(
+          canvas,
           Offset(-18 * s, y * s),
           Offset(-84 * s, (y - 8) * s),
           paint,
+          s,
         );
-        canvas.drawLine(
+        _strokeLine(
+          canvas,
           Offset(18 * s, y * s),
           Offset(84 * s, (y - 8) * s),
           paint,
+          s,
         );
       }
     }
@@ -4405,30 +4853,50 @@ class LessonGuidePainter extends CustomPainter {
 
   void _paintDinosaur(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawOval(
+      _strokeOval(
+        canvas,
         Rect.fromCenter(
           center: Offset(-15 * s, 18 * s),
           width: 142 * s,
           height: 92 * s,
         ),
         _linePaint(0, s),
+        s,
       );
     }
     if (visibleSteps >= 2) {
       final neck = Path()
         ..moveTo(36 * s, -5 * s)
         ..quadraticBezierTo(63 * s, -29 * s, 63 * s, -66 * s);
-      canvas.drawPath(neck, _linePaint(1, s));
-      canvas.drawCircle(Offset(68 * s, -77 * s), 31 * s, _linePaint(1, s));
+      _strokePath(canvas, neck, _linePaint(1, s), s);
+      _strokeCircle(
+        canvas,
+        Offset(68 * s, -77 * s),
+        31 * s,
+        _linePaint(1, s),
+        s,
+      );
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawLine(Offset(-58 * s, 48 * s), Offset(-64 * s, 91 * s), paint);
-      canvas.drawLine(Offset(5 * s, 57 * s), Offset(10 * s, 91 * s), paint);
+      _strokeLine(
+        canvas,
+        Offset(-58 * s, 48 * s),
+        Offset(-64 * s, 91 * s),
+        paint,
+        s,
+      );
+      _strokeLine(
+        canvas,
+        Offset(5 * s, 57 * s),
+        Offset(10 * s, 91 * s),
+        paint,
+        s,
+      );
       final tail = Path()
         ..moveTo(-82 * s, 4 * s)
         ..quadraticBezierTo(-122 * s, -3 * s, -130 * s, -38 * s);
-      canvas.drawPath(tail, paint);
+      _strokePath(canvas, tail, paint, s);
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
@@ -4438,10 +4906,11 @@ class LessonGuidePainter extends CustomPainter {
           ..moveTo(x, -25 * s)
           ..lineTo(x + 13 * s, -54 * s)
           ..lineTo(x + 24 * s, -24 * s);
-        canvas.drawPath(spike, paint);
+        _strokePath(canvas, spike, paint, s);
       }
       canvas.drawCircle(Offset(78 * s, -83 * s), 4 * s, _dotPaint(3));
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(76 * s, -66 * s),
           width: 22 * s,
@@ -4449,15 +4918,16 @@ class LessonGuidePainter extends CustomPainter {
         ),
         0,
         math.pi,
-        false,
         paint,
+        s,
       );
     }
   }
 
   void _paintCar(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawRRect(
+      _strokeRRect(
+        canvas,
         RRect.fromRectAndRadius(
           Rect.fromCenter(
             center: Offset(0, 18 * s),
@@ -4467,6 +4937,7 @@ class LessonGuidePainter extends CustomPainter {
           Radius.circular(17 * s),
         ),
         _linePaint(0, s),
+        s,
       );
     }
     if (visibleSteps >= 2) {
@@ -4475,42 +4946,59 @@ class LessonGuidePainter extends CustomPainter {
         ..lineTo(-30 * s, -61 * s)
         ..lineTo(43 * s, -61 * s)
         ..lineTo(72 * s, -15 * s);
-      canvas.drawPath(roof, _linePaint(1, s));
+      _strokePath(canvas, roof, _linePaint(1, s), s);
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawCircle(Offset(-56 * s, 55 * s), 24 * s, paint);
-      canvas.drawCircle(Offset(57 * s, 55 * s), 24 * s, paint);
+      _strokeCircle(canvas, Offset(-56 * s, 55 * s), 24 * s, paint, s);
+      _strokeCircle(canvas, Offset(57 * s, 55 * s), 24 * s, paint, s);
       canvas.drawCircle(Offset(-56 * s, 55 * s), 7 * s, _dotPaint(2));
       canvas.drawCircle(Offset(57 * s, 55 * s), 7 * s, _dotPaint(2));
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
-      canvas.drawLine(Offset(3 * s, -57 * s), Offset(3 * s, -16 * s), paint);
-      canvas.drawLine(
+      _strokeLine(
+        canvas,
+        Offset(3 * s, -57 * s),
+        Offset(3 * s, -16 * s),
+        paint,
+        s,
+      );
+      _strokeLine(
+        canvas,
         Offset(-28 * s, -55 * s),
         Offset(-49 * s, -17 * s),
         paint,
+        s,
       );
       canvas.drawCircle(Offset(80 * s, 15 * s), 8 * s, _dotPaint(3));
-      canvas.drawLine(Offset(-88 * s, 12 * s), Offset(-70 * s, 12 * s), paint);
+      _strokeLine(
+        canvas,
+        Offset(-88 * s, 12 * s),
+        Offset(-70 * s, 12 * s),
+        paint,
+        s,
+      );
     }
   }
 
   void _paintLantern(Canvas canvas, double s) {
     if (visibleSteps >= 1) {
-      canvas.drawOval(
+      _strokeOval(
+        canvas,
         Rect.fromCenter(
           center: Offset(0, -8 * s),
           width: 126 * s,
           height: 150 * s,
         ),
         _linePaint(0, s),
+        s,
       );
     }
     if (visibleSteps >= 2) {
       final paint = _linePaint(1, s);
-      canvas.drawRRect(
+      _strokeRRect(
+        canvas,
         RRect.fromRectAndRadius(
           Rect.fromCenter(
             center: Offset(0, -87 * s),
@@ -4520,8 +5008,10 @@ class LessonGuidePainter extends CustomPainter {
           Radius.circular(5 * s),
         ),
         paint,
+        s,
       );
-      canvas.drawRRect(
+      _strokeRRect(
+        canvas,
         RRect.fromRectAndRadius(
           Rect.fromCenter(
             center: Offset(0, 71 * s),
@@ -4531,11 +5021,13 @@ class LessonGuidePainter extends CustomPainter {
           Radius.circular(5 * s),
         ),
         paint,
+        s,
       );
     }
     if (visibleSteps >= 3) {
       final paint = _linePaint(2, s);
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(0, -106 * s),
           width: 70 * s,
@@ -4543,17 +5035,24 @@ class LessonGuidePainter extends CustomPainter {
         ),
         math.pi,
         math.pi,
-        false,
         paint,
+        s,
       );
-      canvas.drawLine(Offset(0, 81 * s), Offset(0, 123 * s), paint);
+      _strokeLine(canvas, Offset(0, 81 * s), Offset(0, 123 * s), paint, s);
       for (final x in [-18.0, 0.0, 18.0]) {
-        canvas.drawLine(Offset(x * s, 123 * s), Offset(x * s, 148 * s), paint);
+        _strokeLine(
+          canvas,
+          Offset(x * s, 123 * s),
+          Offset(x * s, 148 * s),
+          paint,
+          s,
+        );
       }
     }
     if (visibleSteps >= 4) {
       final paint = _linePaint(3, s);
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(0, -8 * s),
           width: 72 * s,
@@ -4561,10 +5060,11 @@ class LessonGuidePainter extends CustomPainter {
         ),
         -math.pi / 2,
         math.pi,
-        false,
         paint,
+        s,
       );
-      canvas.drawArc(
+      _strokeArc(
+        canvas,
         Rect.fromCenter(
           center: Offset(0, -8 * s),
           width: 72 * s,
@@ -4572,8 +5072,8 @@ class LessonGuidePainter extends CustomPainter {
         ),
         math.pi / 2,
         math.pi,
-        false,
         paint,
+        s,
       );
       for (final offset in [
         const Offset(-90, -58),
