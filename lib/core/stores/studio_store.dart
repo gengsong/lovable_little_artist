@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
@@ -8,7 +6,8 @@ import 'package:lovable_little_artist/studio_audio.dart';
 /// delegates persistence to an [ArtistStore]. This is a first-step refactor
 /// to move business logic out of large Widget states.
 class StudioStore extends ChangeNotifier {
-  StudioStore({required this.store, StudioAudio? audio}) : _audio = audio ?? StudioAudio();
+  StudioStore({required this.store, StudioAudio? audio})
+    : _audio = audio ?? StudioAudio();
 
   final ArtistStore store;
   final StudioAudio _audio;
@@ -68,7 +67,8 @@ class StudioStore extends ChangeNotifier {
   }
 
   Future<Map<String, Object?>?> loadDraft(String key) => store.loadDraft(key);
-  Future<void> saveDraft(String key, Map<String, Object?> draft) => store.saveDraft(key, draft);
+  Future<void> saveDraft(String key, Map<String, Object?> draft) =>
+      store.saveDraft(key, draft);
   Future<void> deleteDraft(String key) => store.deleteDraft(key);
 
   /// Attempt to read artwork bytes from the underlying store if supported.
@@ -83,7 +83,10 @@ class StudioStore extends ChangeNotifier {
     return null;
   }
 
-  Future<void> initializeAudio({required bool sound, required String languageCode}) => _audio.initialize(sound: sound, languageCode: languageCode);
+  Future<void> initializeAudio({
+    required bool sound,
+    required String languageCode,
+  }) => _audio.initialize(sound: sound, languageCode: languageCode);
 
   Future<void> setSoundEnabled(bool enabled) => _audio.setSoundEnabled(enabled);
 }

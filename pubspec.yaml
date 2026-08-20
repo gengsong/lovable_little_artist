@@ -38,6 +38,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   path_provider: ^2.1.5
   flutter_tts: ^4.2.5
+  gal: ^2.3.3
   
   # State management
   flutter_riverpod: ^2.6.1

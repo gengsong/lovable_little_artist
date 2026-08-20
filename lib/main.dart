@@ -9,9 +9,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
 import 'package:lovable_little_artist/studio_localizations.dart';
+import 'package:lovable_little_artist/core/constants/app_constants.dart';
 import 'package:lovable_little_artist/core/theme/app_colors.dart';
 import 'package:lovable_little_artist/core/theme/app_theme.dart';
-
+import 'package:lovable_little_artist/data/models/gallery_artwork.dart';
+import 'package:lovable_little_artist/data/models/studio_tab.dart';
+import 'package:lovable_little_artist/services/gallery_export_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,8 +73,6 @@ class _LittleArtistVerseAppState extends State<LittleArtistVerseApp> {
     );
   }
 }
-
-enum StudioTab { home, draw, coloring, lessons, gallery, animation, parent }
 
 class StudioHome extends StatefulWidget {
   const StudioHome({
@@ -1160,55 +1161,6 @@ class ActionTile extends StatelessWidget {
   }
 }
 
-enum SketchKind { sun, house, cat, rocket }
-
-class GalleryArtwork {
-  const GalleryArtwork({
-    required this.id,
-    required this.title,
-    required this.createdLabel,
-    required this.color,
-    this.kind,
-    this.pngBytes,
-    this.isFavorite = false,
-    this.isUserCreated = false,
-    this.createdAt,
-    this.source = 'sample',
-    this.lessonId,
-    this.replayData,
-  });
-
-  final String id;
-  final String title;
-  final String createdLabel;
-  final Color color;
-  final SketchKind? kind;
-  final Uint8List? pngBytes;
-  final bool isFavorite;
-  final bool isUserCreated;
-  final DateTime? createdAt;
-  final String source;
-  final String? lessonId;
-  final Map<String, Object?>? replayData;
-
-  GalleryArtwork copyWith({String? title, bool? isFavorite}) {
-    return GalleryArtwork(
-      id: id,
-      title: title ?? this.title,
-      createdLabel: createdLabel,
-      color: color,
-      kind: kind,
-      pngBytes: pngBytes,
-      isFavorite: isFavorite ?? this.isFavorite,
-      isUserCreated: isUserCreated,
-      createdAt: createdAt,
-      source: source,
-      lessonId: lessonId,
-      replayData: replayData,
-    );
-  }
-}
-
 String _artworkSourceLabel(GalleryArtwork artwork) {
   if (!artwork.isUserCreated) return '示例作品';
   return switch (artwork.source) {
@@ -1954,7 +1906,9 @@ class _ColoringPageState extends State<ColoringPage> {
     try {
       final boundary = _canvasKey.currentContext?.findRenderObject();
       if (boundary is! RenderRepaintBoundary) return;
-      final image = await boundary.toImage(pixelRatio: 2);
+      final image = await boundary.toImage(
+        pixelRatio: AppConstants.exportPixelRatio,
+      );
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       if (data == null) throw StateError('无法生成涂色作品');
@@ -2561,7 +2515,7 @@ class _DrawPageState extends State<DrawPage> {
   int? _activePointer;
   DrawingTool _tool = DrawingTool.crayon;
   Color _color = _orange;
-  double _width = 10;
+  double _width = AppConstants.defaultStrokeWidth;
   Timer? _autosaveTimer;
   bool _draftRestored = false;
 
@@ -2607,7 +2561,7 @@ class _DrawPageState extends State<DrawPage> {
 
   void _scheduleAutosave() {
     _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(milliseconds: 700), _persistDraft);
+    _autosaveTimer = Timer(AppConstants.autosaveDelay, _persistDraft);
   }
 
   Future<void> _persistDraft() async {
@@ -2627,7 +2581,9 @@ class _DrawPageState extends State<DrawPage> {
     final stroke = DrawingStroke(
       tool: _tool,
       color: _tool == DrawingTool.eraser ? Colors.white : _color,
-      baseWidth: _tool == DrawingTool.eraser ? _width * 2.4 : _width,
+      baseWidth: _tool == DrawingTool.eraser
+          ? _width * AppConstants.eraserWidthMultiplier
+          : _width,
       points: [DrawingPoint(event.localPosition, _pressure(event))],
     );
     setState(() {
@@ -2695,10 +2651,21 @@ class _DrawPageState extends State<DrawPage> {
   }
 
   Future<void> _savePreview() async {
+    if (_strokes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('先画一点东西再保存吧'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final boundary =
         _canvasKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return;
-    final image = await boundary.toImage(pixelRatio: 2);
+    final image = await boundary.toImage(
+      pixelRatio: AppConstants.exportPixelRatio,
+    );
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (!mounted) return;
     if (data == null) {
@@ -4069,7 +4036,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
 
   void _scheduleAutosave() {
     _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(milliseconds: 700), _persistDraft);
+    _autosaveTimer = Timer(AppConstants.autosaveDelay, _persistDraft);
   }
 
   Future<void> _persistDraft() async {
@@ -5120,6 +5087,7 @@ class GalleryPage extends StatefulWidget {
 
 class _GalleryPageState extends State<GalleryPage> {
   GalleryFilter _filter = GalleryFilter.all;
+  String _query = '';
   String? _selectedArtworkId;
 
   GalleryArtwork? get _selectedArtwork {
@@ -5130,7 +5098,7 @@ class _GalleryPageState extends State<GalleryPage> {
   }
 
   List<GalleryArtwork> get _visibleArtworks {
-    return switch (_filter) {
+    final filtered = switch (_filter) {
       GalleryFilter.all => widget.artworks,
       GalleryFilter.recent =>
         widget.artworks
@@ -5139,6 +5107,13 @@ class _GalleryPageState extends State<GalleryPage> {
       GalleryFilter.favorite =>
         widget.artworks.where((artwork) => artwork.isFavorite).toList(),
     };
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return filtered;
+    return filtered.where((artwork) {
+      return artwork.title.toLowerCase().contains(query) ||
+          artwork.createdLabel.toLowerCase().contains(query) ||
+          _artworkSourceLabel(artwork).toLowerCase().contains(query);
+    }).toList();
   }
 
   Future<void> _rename(GalleryArtwork artwork) async {
@@ -5221,7 +5196,9 @@ class _GalleryPageState extends State<GalleryPage> {
                   .where((artwork) => artwork.isUserCreated)
                   .length,
               filter: _filter,
+              query: _query,
               onFilter: (filter) => setState(() => _filter = filter),
+              onQueryChanged: (query) => setState(() => _query = query),
               onOpen: (artwork) =>
                   setState(() => _selectedArtworkId = artwork.id),
               onCreateNew: widget.onCreateNew,
@@ -5246,7 +5223,9 @@ class GalleryOverview extends StatelessWidget {
     required this.favoriteCount,
     required this.createdCount,
     required this.filter,
+    required this.query,
     required this.onFilter,
+    required this.onQueryChanged,
     required this.onOpen,
     required this.onCreateNew,
     required this.onToggleFavorite,
@@ -5257,7 +5236,9 @@ class GalleryOverview extends StatelessWidget {
   final int favoriteCount;
   final int createdCount;
   final GalleryFilter filter;
+  final String query;
   final ValueChanged<GalleryFilter> onFilter;
+  final ValueChanged<String> onQueryChanged;
   final ValueChanged<GalleryArtwork> onOpen;
   final VoidCallback onCreateNew;
   final ValueChanged<String> onToggleFavorite;
@@ -5278,6 +5259,22 @@ class GalleryOverview extends StatelessWidget {
               onCreateNew: onCreateNew,
             ),
             const SizedBox(height: 18),
+            TextFormField(
+              key: const ValueKey('gallery-search'),
+              initialValue: query,
+              onChanged: onQueryChanged,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_rounded),
+                hintText: context.tr('搜索作品'),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -5689,7 +5686,7 @@ class ArtworkThumbnail extends StatelessWidget {
   }
 }
 
-class GalleryArtworkDetail extends StatelessWidget {
+class GalleryArtworkDetail extends StatefulWidget {
   const GalleryArtworkDetail({
     super.key,
     required this.artwork,
@@ -5706,18 +5703,67 @@ class GalleryArtworkDetail extends StatelessWidget {
   final VoidCallback? onDelete;
 
   @override
+  State<GalleryArtworkDetail> createState() => _GalleryArtworkDetailState();
+}
+
+class _GalleryArtworkDetailState extends State<GalleryArtworkDetail> {
+  final _previewKey = GlobalKey();
+
+  Future<void> _exportPreview() async {
+    final boundary =
+        _previewKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    try {
+      final image = await boundary.toImage(
+        pixelRatio: AppConstants.exportPixelRatio,
+      );
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      if (data == null) throw StateError('Unable to export artwork preview');
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      await GalleryExportService.savePng(
+        bytes,
+        name: 'little_artist_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('PNG 已导出到相册'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: LocalizedText('导出失败，请确认相册权限已开启'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final artwork = widget.artwork;
     return LayoutBuilder(
       builder: (context, constraints) {
         final sideBySide =
             constraints.maxWidth >= 720 && constraints.maxHeight >= 500;
-        final preview = Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(32),
+        final preview = RepaintBoundary(
+          key: _previewKey,
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            child: ArtworkThumbnail(artwork: artwork),
           ),
-          child: ArtworkThumbnail(artwork: artwork),
         );
         final details = Container(
           padding: const EdgeInsets.all(22),
@@ -5752,7 +5798,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                   IconButton(
                     key: ValueKey('gallery-detail-favorite-${artwork.id}'),
                     tooltip: context.tr(artwork.isFavorite ? '取消收藏' : '收藏作品'),
-                    onPressed: onFavorite,
+                    onPressed: widget.onFavorite,
                     icon: Icon(
                       artwork.isFavorite
                           ? Icons.favorite_rounded
@@ -5840,7 +5886,7 @@ class GalleryArtworkDetail extends StatelessWidget {
                     backgroundColor: _orange,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: onCreateNew,
+                  onPressed: widget.onCreateNew,
                   icon: const Icon(Icons.brush_rounded),
                   label: const LocalizedText(
                     '再画一幅',
@@ -5848,29 +5894,39 @@ class GalleryArtworkDetail extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onRename != null || onDelete != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('gallery-export-png'),
+                  onPressed: _exportPreview,
+                  icon: const Icon(Icons.download_rounded),
+                  label: const LocalizedText('导出 PNG 到相册'),
+                ),
+              ),
+              if (widget.onRename != null || widget.onDelete != null) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    if (onRename != null)
+                    if (widget.onRename != null)
                       Expanded(
                         child: OutlinedButton.icon(
                           key: const ValueKey('gallery-rename'),
-                          onPressed: onRename,
+                          onPressed: widget.onRename,
                           icon: const Icon(Icons.edit_rounded),
                           label: const LocalizedText('重命名'),
                         ),
                       ),
-                    if (onRename != null && onDelete != null)
+                    if (widget.onRename != null && widget.onDelete != null)
                       const SizedBox(width: 10),
-                    if (onDelete != null)
+                    if (widget.onDelete != null)
                       Expanded(
                         child: OutlinedButton.icon(
                           key: const ValueKey('gallery-delete'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFFB33A2B),
                           ),
-                          onPressed: onDelete,
+                          onPressed: widget.onDelete,
                           icon: const Icon(Icons.delete_outline_rounded),
                           label: const LocalizedText('删除'),
                         ),
@@ -5895,7 +5951,7 @@ class GalleryArtworkDetail extends StatelessWidget {
           children: [
             SizedBox(height: 340, child: preview),
             const SizedBox(height: 14),
-            SizedBox(height: artwork.isUserCreated ? 400 : 340, child: details),
+            SizedBox(height: artwork.isUserCreated ? 455 : 395, child: details),
           ],
         );
       },
