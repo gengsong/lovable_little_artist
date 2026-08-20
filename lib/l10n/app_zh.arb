@@ -1,0 +1,14 @@
+{
+  "@@locale": "zh",
+  "appTitle": "小小画室 Little Art Studio",
+  "@appTitle": {
+    "description": "应用标题"
+  },
+  "home": "首页",
+  "draw": "画板",
+  "coloring": "涂色",
+  "lessons": "课程",
+  "gallery": "作品集",
+  "animation": "动画",
+  "parent": "家长"
+}

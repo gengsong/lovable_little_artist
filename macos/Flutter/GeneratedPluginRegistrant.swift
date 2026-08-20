@@ -5,8 +5,8 @@
 import FlutterMacOS
 import Foundation
 
-import gal
+import flutter_tts
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
-  GalPlugin.register(with: registry.registrar(forPlugin: "GalPlugin"))
+  FlutterTtsPlugin.register(with: registry.registrar(forPlugin: "FlutterTtsPlugin"))
 }
