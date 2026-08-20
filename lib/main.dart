@@ -101,7 +101,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   int _streak = 0;
   int _creationStars = 0;
   bool _soundEnabled = true;
-  String _ageGroup = '4-6岁';
+  String _ageGroup = '6-8岁';
   String _difficulty = '入门';
   String _localeMode = 'system';
   GalleryArtwork? _editingArtwork;
@@ -188,7 +188,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
       _streak = (_preferences['creationStreak'] as num?)?.toInt() ?? 0;
       _creationStars = (_preferences['creationStars'] as num?)?.toInt() ?? 0;
       _soundEnabled = _preferences['soundEnabled'] as bool? ?? true;
-      _ageGroup = _preferences['ageGroup'] as String? ?? '4-6岁';
+      _ageGroup = _normalizeAgeGroup(_preferences['ageGroup'] as String?);
       _difficulty = _preferences['difficulty'] as String? ?? '入门';
       _localeMode = _preferences['localeMode'] as String? ?? 'system';
       artworks.insertAll(0, snapshot.artworks.map(_galleryArtworkFromStored));
@@ -215,6 +215,15 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
         ? WidgetsBinding.instance.platformDispatcher.locale.languageCode
         : mode;
     unawaited(_audio.setLanguage(languageCode));
+  }
+
+  String _normalizeAgeGroup(String? value) {
+    return switch (value) {
+      '2-4岁' || '4-6岁' || '3-5岁' => '3-5岁',
+      '6-8岁' => '6-8岁',
+      '9-12岁' => '9-12岁',
+      _ => '6-8岁',
+    };
   }
 
   void _toggleLanguage(BuildContext context) {
@@ -544,8 +553,8 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
               unawaited(_audio.setSoundEnabled(value));
             },
             onAgeChanged: (value) {
-              _ageGroup = value;
-              _savePreference('ageGroup', value);
+              _ageGroup = _normalizeAgeGroup(value);
+              _savePreference('ageGroup', _ageGroup);
             },
             onDifficultyChanged: (value) {
               _difficulty = value;
@@ -3671,11 +3680,19 @@ class NativeCanvasPainter extends CustomPainter {
 enum LessonArt { cat, dinosaur, car, lantern }
 
 class LessonStep {
-  const LessonStep(this.title, this.description, this.tip);
+  const LessonStep(
+    this.title,
+    this.description,
+    this.tip, {
+    required this.storyBeat,
+    required this.response,
+  });
 
   final String title;
   final String description;
   final String tip;
+  final String storyBeat;
+  final String response;
 }
 
 class DrawingLesson {
@@ -3689,7 +3706,12 @@ class DrawingLesson {
     required this.icon,
     required this.art,
     required this.steps,
-    this.ageGroup = '4-6岁',
+    required this.storyTitle,
+    required this.storyIntro,
+    required this.storyPrompt,
+    required this.completionTitle,
+    required this.completionStory,
+    this.ageGroup = '6-8岁',
     this.difficulty = '入门',
   });
 
@@ -3702,6 +3724,11 @@ class DrawingLesson {
   final IconData icon;
   final LessonArt art;
   final List<LessonStep> steps;
+  final String storyTitle;
+  final String storyIntro;
+  final String storyPrompt;
+  final String completionTitle;
+  final String completionStory;
   final String ageGroup;
   final String difficulty;
 }
@@ -3716,13 +3743,42 @@ const _drawingLessons = [
     color: _mint,
     icon: Icons.pets_rounded,
     art: LessonArt.cat,
-    ageGroup: '2-4岁',
+    storyTitle: '月光窗台音乐会',
+    storyIntro: '今晚窗台上有一场很小很小的音乐会，圆脸小猫想第一个登台。',
+    storyPrompt: '帮小猫准备好圆圆的脸、软软的耳朵和开心的笑容。',
+    completionTitle: '小猫登台啦',
+    completionStory: '月光落在窗台上，小猫带着你画出的笑脸唱起了第一首歌。',
+    ageGroup: '3-5岁',
     difficulty: '入门',
     steps: [
-      LessonStep('画一个大圆', '先画一个大大的圆，做小猫的脑袋。', '慢慢转动手腕，圆不需要特别完美。'),
-      LessonStep('添上三角耳朵', '在圆形上方画两个小三角形。', '两只耳朵一高一低也很可爱。'),
-      LessonStep('画弯弯的眼睛', '加上眼睛和一个小鼻子。', '像画两个月牙一样画眼睛。'),
-      LessonStep('加上笑脸和胡须', '最后画嘴巴和三根长胡须。', '选喜欢的颜色，再加一点腮红吧。'),
+      LessonStep(
+        '画一个大圆',
+        '先画一个大大的圆，做小猫的脑袋。',
+        '慢慢转动手腕，圆不需要特别完美。',
+        storyBeat: '小猫从月光里探出圆圆的脑袋。',
+        response: '画室伙伴点点头：这个圆像一颗暖暖的小月亮。',
+      ),
+      LessonStep(
+        '添上三角耳朵',
+        '在圆形上方画两个小三角形。',
+        '两只耳朵一高一低也很可爱。',
+        storyBeat: '小猫竖起耳朵，听见远处的铃声。',
+        response: '太好了，小猫已经听见音乐会开始的声音。',
+      ),
+      LessonStep(
+        '画弯弯的眼睛',
+        '加上眼睛和一个小鼻子。',
+        '像画两个月牙一样画眼睛。',
+        storyBeat: '它眯起眼睛，准备唱第一句。',
+        response: '这双眼睛真温柔，故事开始有表情了。',
+      ),
+      LessonStep(
+        '加上笑脸和胡须',
+        '最后画嘴巴和三根长胡须。',
+        '选喜欢的颜色，再加一点腮红吧。',
+        storyBeat: '胡须轻轻摆动，小猫向观众鞠躬。',
+        response: '完成啦，小猫已经准备好登上窗台。',
+      ),
     ],
   ),
   DrawingLesson(
@@ -3734,13 +3790,42 @@ const _drawingLessons = [
     color: _peach,
     icon: Icons.park_rounded,
     art: LessonArt.dinosaur,
-    ageGroup: '4-6岁',
+    storyTitle: '小恐龙去找星星',
+    storyIntro: '山谷黑下来以后，小恐龙听说有一颗星星掉在了草地上。',
+    storyPrompt: '陪它长出身体、脖子、脚步和勇敢的笑脸，一起出发找星星。',
+    completionTitle: '星星被找到了',
+    completionStory: '小恐龙抬头一看，原来最亮的星星就藏在你的画里。',
+    ageGroup: '6-8岁',
     difficulty: '进阶',
     steps: [
-      LessonStep('画椭圆身体', '横着画一个胖胖的椭圆。', '椭圆越饱满，小恐龙越可爱。'),
-      LessonStep('加上脑袋和脖子', '从身体向上画长脖子和小脑袋。', '用一条柔软的弧线连接身体。'),
-      LessonStep('添四条腿和尾巴', '画短短的腿，再加一条长尾巴。', '脚掌可以画成圆圆的小方块。'),
-      LessonStep('画背刺和表情', '沿背部加三角背刺，再画笑脸。', '背刺可以大小不一样。'),
+      LessonStep(
+        '画椭圆身体',
+        '横着画一个胖胖的椭圆。',
+        '椭圆越饱满，小恐龙越可爱。',
+        storyBeat: '小恐龙背起小包，圆圆的身体装满勇气。',
+        response: '这一步很稳，小恐龙已经站在故事开头了。',
+      ),
+      LessonStep(
+        '加上脑袋和脖子',
+        '从身体向上画长脖子和小脑袋。',
+        '用一条柔软的弧线连接身体。',
+        storyBeat: '它伸长脖子，想看见草地尽头的星光。',
+        response: '好棒，这条弧线让小恐龙真的抬起头了。',
+      ),
+      LessonStep(
+        '添四条腿和尾巴',
+        '画短短的腿，再加一条长尾巴。',
+        '脚掌可以画成圆圆的小方块。',
+        storyBeat: '四只小脚踩过草叶，尾巴轻轻保持平衡。',
+        response: '现在它可以出发了，每一步都很勇敢。',
+      ),
+      LessonStep(
+        '画背刺和表情',
+        '沿背部加三角背刺，再画笑脸。',
+        '背刺可以大小不一样。',
+        storyBeat: '它笑着发现：星星正在前方闪呀闪。',
+        response: '故事亮起来了，小恐龙看见星星了。',
+      ),
     ],
   ),
   DrawingLesson(
@@ -3752,13 +3837,42 @@ const _drawingLessons = [
     color: _butter,
     icon: Icons.directions_car_rounded,
     art: LessonArt.car,
-    ageGroup: '4-6岁',
+    storyTitle: '彩虹信件快快送',
+    storyIntro: '清晨的小路上，有一封彩虹信要送到山坡另一边。',
+    storyPrompt: '画出车身、车顶、轮子和灯光，让小汽车把惊喜送到朋友手里。',
+    completionTitle: '彩虹信送到啦',
+    completionStory: '小汽车按响轻轻的喇叭，朋友打开信，彩虹从纸里跑了出来。',
+    ageGroup: '6-8岁',
     difficulty: '入门',
     steps: [
-      LessonStep('画长方形车身', '先画一个圆角长方形。', '车头可以稍微高一点。'),
-      LessonStep('加上车顶', '在车身上画一个梯形车顶。', '给车顶留出两扇窗的位置。'),
-      LessonStep('画两个轮子', '在车身下方画两个圆形轮子。', '让两个轮子差不多大。'),
-      LessonStep('装饰车窗和车灯', '画上车窗、车灯和喜欢的花纹。', '给小汽车取一个名字吧。'),
+      LessonStep(
+        '画长方形车身',
+        '先画一个圆角长方形。',
+        '车头可以稍微高一点。',
+        storyBeat: '小汽车把彩虹信放进车厢，准备出发。',
+        response: '车身画好了，彩虹信有地方坐了。',
+      ),
+      LessonStep(
+        '加上车顶',
+        '在车身上画一个梯形车顶。',
+        '给车顶留出两扇窗的位置。',
+        storyBeat: '车顶挡住晨雾，窗户看见弯弯的小路。',
+        response: '这个车顶很可靠，旅程不怕小雨了。',
+      ),
+      LessonStep(
+        '画两个轮子',
+        '在车身下方画两个圆形轮子。',
+        '让两个轮子差不多大。',
+        storyBeat: '轮子转起来，石子路也变成节奏。',
+        response: '出发！两个轮子正在带故事往前走。',
+      ),
+      LessonStep(
+        '装饰车窗和车灯',
+        '画上车窗、车灯和喜欢的花纹。',
+        '给小汽车取一个名字吧。',
+        storyBeat: '车灯亮起，彩虹信马上就要送到。',
+        response: '小汽车有了自己的性格，像真正的故事主角。',
+      ),
     ],
   ),
   DrawingLesson(
@@ -3770,13 +3884,42 @@ const _drawingLessons = [
     color: _rose,
     icon: Icons.celebration_rounded,
     art: LessonArt.lantern,
-    ageGroup: '6-8岁',
+    storyTitle: '点亮节日夜',
+    storyIntro: '节日夜的街角有一点暗，小画室伙伴想挂起一盏会讲故事的灯笼。',
+    storyPrompt: '用弧线、提绳、流苏和花纹，把夜晚一点一点照亮。',
+    completionTitle: '灯笼讲起故事',
+    completionStory: '灯笼亮了起来，街角的人都停下脚步，看见光里有你的线条。',
+    ageGroup: '9-12岁',
     difficulty: '挑战',
     steps: [
-      LessonStep('画灯笼肚子', '画一个竖着的胖椭圆。', '上下稍窄，中间圆鼓鼓。'),
-      LessonStep('加上顶盖和底座', '在椭圆上下各画一个小长方形。', '让顶盖和底座对齐。'),
-      LessonStep('画提绳和流苏', '上面添提绳，下面添长流苏。', '流苏可以画得轻轻摆动。'),
-      LessonStep('加花纹和光芒', '在灯笼上画弧线，再添几颗小星星。', '最后涂上最喜庆的颜色。'),
+      LessonStep(
+        '画灯笼肚子',
+        '画一个竖着的胖椭圆。',
+        '上下稍窄，中间圆鼓鼓。',
+        storyBeat: '灯笼先有了一个能装下光的肚子。',
+        response: '这个形状很饱满，里面好像已经有一点亮了。',
+      ),
+      LessonStep(
+        '加上顶盖和底座',
+        '在椭圆上下各画一个小长方形。',
+        '让顶盖和底座对齐。',
+        storyBeat: '顶盖轻轻扣上，光就不会跑丢。',
+        response: '结构站稳了，这盏灯笼可以被挂起来。',
+      ),
+      LessonStep(
+        '画提绳和流苏',
+        '上面添提绳，下面添长流苏。',
+        '流苏可以画得轻轻摆动。',
+        storyBeat: '晚风一吹，流苏开始替灯笼跳舞。',
+        response: '流苏让画面动起来了，像一页真正的绘本。',
+      ),
+      LessonStep(
+        '加花纹和光芒',
+        '在灯笼上画弧线，再添几颗小星星。',
+        '最后涂上最喜庆的颜色。',
+        storyBeat: '花纹亮起，整条街都看见了温暖的光。',
+        response: '完成啦，你把节日夜点亮了。',
+      ),
     ],
   ),
 ];
@@ -4087,9 +4230,7 @@ class LessonWelcomeBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     LocalizedText(
-                      hasProgress
-                          ? '已经完成 $completedSteps / ${lesson.steps.length} 步，接着画吧！'
-                          : '挑一幅喜欢的作品，我们一步一步来。',
+                      hasProgress ? lesson.storyPrompt : lesson.storyIntro,
                       style: const TextStyle(
                         color: _muted,
                         fontWeight: FontWeight.w700,
@@ -4201,7 +4342,7 @@ class LessonCourseCard extends StatelessWidget {
                       children: [
                         Expanded(
                           child: LocalizedText(
-                            lesson.title,
+                            lesson.storyTitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -4219,7 +4360,7 @@ class LessonCourseCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     LocalizedText(
-                      lesson.subtitle,
+                      lesson.storyPrompt,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -4344,6 +4485,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   Timer? _autosaveTimer;
   bool _isCompleting = false;
   bool _suppressDraftSave = false;
+  int _guideAnimationKey = 0;
 
   bool get _canUndo => _strokes.isNotEmpty;
   bool get _canRedo => _redoStack.isNotEmpty;
@@ -4362,9 +4504,12 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
     final stepLabel = context.tr(
       '第 ${_stepIndex + 1} / ${widget.lesson.steps.length} 步',
     );
+    final storyLead = _stepIndex == 0
+        ? '${context.tr(widget.lesson.storyIntro)}. '
+        : '';
     unawaited(
       widget.audio.speak(
-        '$stepLabel. ${context.tr(step.title)}. '
+        '$storyLead$stepLabel. ${context.tr(step.storyBeat)}. ${context.tr(step.title)}. '
         '${context.tr(step.description)}. ${context.tr(step.tip)}',
       ),
     );
@@ -4502,21 +4647,43 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
 
   void _previousStep() {
     if (_stepIndex == 0) return;
-    setState(() => _stepIndex--);
+    setState(() {
+      _stepIndex--;
+      _guideAnimationKey++;
+    });
     _scheduleAutosave();
     _speakCurrentStep();
   }
 
   void _nextStep() {
     if (_stepIndex < widget.lesson.steps.length - 1) {
+      final response = widget.lesson.steps[_stepIndex].response;
       widget.onProgress(_stepIndex + 1);
-      setState(() => _stepIndex++);
+      setState(() {
+        _stepIndex++;
+        _guideAnimationKey++;
+      });
       _scheduleAutosave();
+      _showBuddyResponse(response);
       _speakCurrentStep();
       return;
     }
     widget.onProgress(widget.lesson.steps.length);
     _completeLesson();
+  }
+
+  void _showBuddyResponse(String response) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: LocalizedText(response),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1500),
+      ),
+    );
+    if (widget.soundEnabled) {
+      unawaited(widget.audio.success(context.tr(response)));
+    }
   }
 
   Future<void> _completeLesson() async {
@@ -4543,23 +4710,10 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.auto_awesome_rounded, color: _orange, size: 48),
-        title: const LocalizedText('画好啦！'),
-        content: LocalizedText(
-          saved ? '每一笔都很特别，作品已经自动保存到作品集啦！' : '课程已经完成，但作品保存失败，请检查设备存储空间。',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'restart'),
-            child: const LocalizedText('再画一次'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, 'catalog'),
-            child: const LocalizedText('返回课程'),
-          ),
-        ],
+      builder: (context) => LessonStoryResultDialog(
+        lesson: widget.lesson,
+        strokes: List<DrawingStroke>.unmodifiable(_strokes),
+        saved: saved,
       ),
     );
     if (!mounted) return;
@@ -4627,25 +4781,68 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Listener(
-                    key: const ValueKey('lesson-guided-canvas'),
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: _startStroke,
-                    onPointerMove: _extendStroke,
-                    onPointerUp: _endStroke,
-                    onPointerCancel: _endStroke,
-                    child: CustomPaint(
-                      painter: NativeCanvasPainter(
-                        strokes: _strokes,
-                        guide: _showGuide
-                            ? LessonGuidePainter(
-                                art: widget.lesson.art,
-                                visibleSteps: _stepIndex + 1,
-                                accent: widget.lesson.color,
-                              )
-                            : null,
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('lesson-guide-$_guideAnimationKey'),
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 620),
+                    curve: Curves.easeOutBack,
+                    builder: (context, value, child) {
+                      return Listener(
+                        key: const ValueKey('lesson-guided-canvas'),
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: _startStroke,
+                        onPointerMove: _extendStroke,
+                        onPointerUp: _endStroke,
+                        onPointerCancel: _endStroke,
+                        child: CustomPaint(
+                          painter: NativeCanvasPainter(
+                            strokes: _strokes,
+                            guide: _showGuide
+                                ? LessonGuidePainter(
+                                    art: widget.lesson.art,
+                                    visibleSteps: _stepIndex + 1,
+                                    accent: widget.lesson.color,
+                                    animationProgress: value.clamp(0, 1),
+                                  )
+                                : null,
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                      );
+                    },
+                    child: const SizedBox.expand(),
+                  ),
+                  Positioned(
+                    left: 14,
+                    top: 14,
+                    child: StoryPaper(
+                      color: Colors.white.withValues(alpha: .88),
+                      borderRadius: 22,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
-                      child: const SizedBox.expand(),
+                      shadow: false,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const StudioBuddy(size: 30),
+                          const SizedBox(width: 8),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 260),
+                            child: LocalizedText(
+                              widget.lesson.steps[_stepIndex].storyBeat,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Positioned(
@@ -4857,6 +5054,12 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  LessonStoryCallout(
+                    lesson: widget.lesson,
+                    step: step,
+                    isFirstStep: _stepIndex == 0,
+                  ),
+                  const SizedBox(height: 14),
                   Container(
                     height: 145,
                     width: double.infinity,
@@ -4970,28 +5173,219 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   }
 }
 
+class LessonStoryCallout extends StatelessWidget {
+  const LessonStoryCallout({
+    super.key,
+    required this.lesson,
+    required this.step,
+    required this.isFirstStep,
+  });
+
+  final DrawingLesson lesson;
+  final LessonStep step;
+  final bool isFirstStep;
+
+  @override
+  Widget build(BuildContext context) {
+    return StoryPaper(
+      color: lesson.color.withValues(alpha: .58),
+      borderRadius: 22,
+      padding: const EdgeInsets.all(12),
+      shadow: false,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const StudioBuddy(size: 42),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LocalizedText(
+                  isFirstStep ? lesson.storyTitle : step.storyBeat,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                LocalizedText(
+                  isFirstStep ? lesson.storyIntro : step.response,
+                  style: const TextStyle(
+                    color: _muted,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LessonStoryResultDialog extends StatelessWidget {
+  const LessonStoryResultDialog({
+    super.key,
+    required this.lesson,
+    required this.strokes,
+    required this.saved,
+  });
+
+  final DrawingLesson lesson;
+  final List<DrawingStroke> strokes;
+  final bool saved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(22),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: StoryPaper(
+          color: StudioVisuals.paper,
+          borderRadius: 30,
+          padding: const EdgeInsets.all(20),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 560;
+              final preview = AspectRatio(
+                aspectRatio: 1.26,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: CustomPaint(
+                    painter: NativeCanvasPainter(
+                      strokes: strokes,
+                      guide: strokes.isEmpty
+                          ? LessonGuidePainter(
+                              art: lesson.art,
+                              visibleSteps: lesson.steps.length,
+                              accent: lesson.color,
+                              preview: true,
+                            )
+                          : null,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              );
+              final story = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const StudioBuddy(size: 58),
+                  const SizedBox(height: 10),
+                  const LocalizedText(
+                    '画好啦！',
+                    style: TextStyle(
+                      fontSize: 22,
+                      color: _ink,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  BrushStrokeBadge(
+                    label: context.tr(lesson.completionTitle),
+                    icon: Icons.auto_stories_rounded,
+                    fontSize: 20,
+                    color: lesson.color,
+                  ),
+                  const SizedBox(height: 12),
+                  LocalizedText(
+                    lesson.completionStory,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.45,
+                      color: _ink,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  LocalizedText(
+                    saved
+                        ? '每一笔都很特别，作品已经自动保存到作品集啦！'
+                        : '故事完成了，但作品保存失败，请检查设备存储空间。',
+                    style: const TextStyle(
+                      color: _muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (wide)
+                    Row(
+                      children: [
+                        Expanded(child: preview),
+                        const SizedBox(width: 18),
+                        Expanded(child: story),
+                      ],
+                    )
+                  else ...[
+                    preview,
+                    const SizedBox(height: 14),
+                    story,
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, 'restart'),
+                        child: const LocalizedText('再画一次'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, 'catalog'),
+                        child: const LocalizedText('返回课程'),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class LessonGuidePainter extends CustomPainter {
   LessonGuidePainter({
     required this.art,
     required this.visibleSteps,
     required this.accent,
     this.preview = false,
+    this.animationProgress = 1,
   });
 
   final LessonArt art;
   final int visibleSteps;
   final Color accent;
   final bool preview;
+  final double animationProgress;
 
   Paint _linePaint(int stage, double scale) {
     final isCurrent = stage == visibleSteps - 1;
+    final currentProgress = preview || !isCurrent ? 1.0 : animationProgress;
+    final currentAlpha = .25 + .75 * currentProgress;
     return Paint()
       ..color = preview
           ? _ink.withValues(alpha: .78)
           : (isCurrent
-                ? _orange.withValues(alpha: .58)
+                ? _orange.withValues(alpha: .58 * currentAlpha)
                 : _brown.withValues(alpha: .24))
-      ..strokeWidth = (preview ? 4 : 5) * scale
+      ..strokeWidth =
+          (preview ? 4 : 5) *
+          scale *
+          (isCurrent ? .86 + .14 * currentProgress : 1)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
@@ -5001,7 +5395,7 @@ class LessonGuidePainter extends CustomPainter {
     ..color = preview
         ? _ink.withValues(alpha: .82)
         : (stage == visibleSteps - 1
-              ? _orange.withValues(alpha: .62)
+              ? _orange.withValues(alpha: .62 * (.25 + .75 * animationProgress))
               : _brown.withValues(alpha: .28));
 
   void _strokePath(Canvas canvas, Path path, Paint paint, double scale) {
@@ -5419,7 +5813,8 @@ class LessonGuidePainter extends CustomPainter {
     return oldDelegate.art != art ||
         oldDelegate.visibleSteps != visibleSteps ||
         oldDelegate.accent != accent ||
-        oldDelegate.preview != preview;
+        oldDelegate.preview != preview ||
+        oldDelegate.animationProgress != animationProgress;
   }
 }
 
@@ -6927,7 +7322,7 @@ class _ParentPageState extends State<ParentPage> {
                 ),
                 trailing: DropdownButton<String>(
                   value: widget.ageGroup,
-                  items: ['2-4岁', '4-6岁', '6-8岁']
+                  items: ['3-5岁', '6-8岁', '9-12岁']
                       .map(
                         (value) => DropdownMenuItem(
                           value: value,
