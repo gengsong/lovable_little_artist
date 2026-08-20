@@ -12,6 +12,7 @@ import 'package:lovable_little_artist/studio_localizations.dart';
 import 'package:lovable_little_artist/core/constants/app_constants.dart';
 import 'package:lovable_little_artist/core/theme/app_colors.dart';
 import 'package:lovable_little_artist/core/theme/app_theme.dart';
+import 'package:lovable_little_artist/core/visual/studio_visual_identity.dart';
 import 'package:lovable_little_artist/data/models/gallery_artwork.dart';
 import 'package:lovable_little_artist/data/models/studio_tab.dart';
 import 'package:lovable_little_artist/services/gallery_export_service.dart';
@@ -514,26 +515,28 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
                   selected: tab,
                   onSelect: (next) => setState(() => tab = next),
                 ),
-          body: SafeArea(
-            child: Row(
-              children: [
-                if (isTablet)
-                  StudioRail(
-                    selected: tab,
-                    onSelect: (next) => setState(() => tab = next),
-                    onLanguageToggle: () => _toggleLanguage(context),
-                  ),
-                Expanded(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isTablet ? 1080 : 520,
+          body: StoryScaffoldBackdrop(
+            child: SafeArea(
+              child: Row(
+                children: [
+                  if (isTablet)
+                    StudioRail(
+                      selected: tab,
+                      onSelect: (next) => setState(() => tab = next),
+                      onLanguageToggle: () => _toggleLanguage(context),
+                    ),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet ? 1080 : 520,
+                        ),
+                        child: content,
                       ),
-                      child: content,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -571,9 +574,9 @@ class StudioRail extends StatelessWidget {
       color: Colors.white.withValues(alpha: .56),
       child: Column(
         children: [
-          const SizedBox(height: 26),
-          const Icon(Icons.palette_rounded, color: _orange, size: 30),
-          const SizedBox(height: 28),
+          const SizedBox(height: 18),
+          const StudioBuddy(size: 58),
+          const SizedBox(height: 14),
           for (final item in items)
             NavPill(
               icon: item.$2,
@@ -952,29 +955,16 @@ class HeroGreeting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StoryPaper(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(44),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .10),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
+      borderRadius: 44,
+      color: StudioVisuals.paper,
       child: Row(
         children: [
           Stack(
             clipBehavior: Clip.none,
             children: [
-              const CircleAvatar(
-                radius: 44,
-                backgroundColor: Color(0xFFFFDD78),
-                child: LocalizedText('🦊', style: TextStyle(fontSize: 38)),
-              ),
+              const StudioBuddy(size: 88),
               Positioned(
                 right: -4,
                 top: -8,
@@ -1094,64 +1084,58 @@ class ActionTile extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 210;
-        return Material(
+        return StoryPaper(
           color: color,
-          borderRadius: BorderRadius.circular(36),
-          child: InkWell(
+          borderRadius: 36,
+          child: Material(
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(36),
-            onTap: onTap,
-            child: Container(
-              padding: EdgeInsets.all(compact ? 16 : 24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(36),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF6E5A45).withValues(alpha: .18),
-                    blurRadius: 0,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  CircleAvatar(
-                    radius: compact ? 22 : 31,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      icon,
-                      color: iconColor,
-                      size: compact ? 24 : 32,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(36),
+              onTap: onTap,
+              child: Padding(
+                padding: EdgeInsets.all(compact ? 16 : 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    CircleAvatar(
+                      radius: compact ? 22 : 31,
+                      backgroundColor: Colors.white,
+                      child: Icon(
+                        icon,
+                        color: iconColor,
+                        size: compact ? 24 : 32,
+                      ),
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LocalizedText(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 18 : 25,
-                          fontWeight: FontWeight.w900,
-                          color: _ink,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LocalizedText(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 18 : 25,
+                            fontWeight: FontWeight.w900,
+                            color: _ink,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: compact ? 2 : 5),
-                      LocalizedText(
-                        subtitle,
-                        maxLines: compact ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 12 : 17,
-                          color: _muted,
-                          fontWeight: FontWeight.w800,
+                        SizedBox(height: compact ? 2 : 5),
+                        LocalizedText(
+                          subtitle,
+                          maxLines: compact ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 12 : 17,
+                            color: _muted,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -6664,14 +6648,10 @@ class AppPage extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: LocalizedText(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                  ),
+                child: BrushStrokeBadge(
+                  label: context.tr(title),
+                  icon: Icons.brush_rounded,
+                  fontSize: 24,
                 ),
               ),
             ],
