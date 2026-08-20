@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:image/image.dart' as img;
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
 import 'package:lovable_little_artist/studio_localizations.dart';
@@ -6832,10 +6833,11 @@ class GalleryEmptyState extends StatelessWidget {
   }
 }
 
-enum ArtworkMotion { jump, blink, fly, replay }
+enum ArtworkMotion { breathe, blink, jump, fly, replay }
 
 extension ArtworkMotionInfo on ArtworkMotion {
   String get label => switch (this) {
+    ArtworkMotion.breathe => '轻轻呼吸',
     ArtworkMotion.jump => '跳一跳',
     ArtworkMotion.blink => '眨眼',
     ArtworkMotion.fly => '飞起来',
@@ -6843,11 +6845,65 @@ extension ArtworkMotionInfo on ArtworkMotion {
   };
 
   IconData get icon => switch (this) {
+    ArtworkMotion.breathe => Icons.air_rounded,
     ArtworkMotion.jump => Icons.swap_vert_rounded,
     ArtworkMotion.blink => Icons.visibility_rounded,
     ArtworkMotion.fly => Icons.flight_takeoff_rounded,
     ArtworkMotion.replay => Icons.gesture_rounded,
   };
+}
+
+enum StorySticker { sparkle, moon, rainbow, flower }
+
+extension StoryStickerInfo on StorySticker {
+  String get label => switch (this) {
+    StorySticker.sparkle => '星星贴纸',
+    StorySticker.moon => '月亮贴纸',
+    StorySticker.rainbow => '彩虹贴纸',
+    StorySticker.flower => '小花贴纸',
+  };
+
+  IconData get icon => switch (this) {
+    StorySticker.sparkle => Icons.auto_awesome_rounded,
+    StorySticker.moon => Icons.nightlight_round,
+    StorySticker.rainbow => Icons.radar_rounded,
+    StorySticker.flower => Icons.local_florist_rounded,
+  };
+
+  Color get color => switch (this) {
+    StorySticker.sparkle => StudioVisuals.lemon,
+    StorySticker.moon => StudioVisuals.sky,
+    StorySticker.rainbow => StudioVisuals.coral,
+    StorySticker.flower => StudioVisuals.leaf,
+  };
+}
+
+class AnimationStoryPage {
+  const AnimationStoryPage({
+    required this.artwork,
+    required this.subtitle,
+    required this.motion,
+    required this.sticker,
+  });
+
+  final GalleryArtwork artwork;
+  final String subtitle;
+  final ArtworkMotion motion;
+  final StorySticker sticker;
+
+  AnimationStoryPage copyWith({
+    GalleryArtwork? artwork,
+    String? subtitle,
+    ArtworkMotion? motion,
+    StorySticker? sticker,
+  }) {
+    return AnimationStoryPage(
+      artwork: artwork ?? this.artwork,
+      subtitle: subtitle ?? this.subtitle,
+      motion: motion ?? this.motion,
+      sticker: sticker ?? this.sticker,
+    );
+  }
 }
 
 class AnimationPage extends StatefulWidget {
@@ -6869,21 +6925,21 @@ class AnimationPage extends StatefulWidget {
 class _AnimationPageState extends State<AnimationPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  ArtworkMotion _motion = ArtworkMotion.jump;
-  String? _selectedId;
+  late List<AnimationStoryPage> _storyPages;
+  int _pageIndex = 0;
+  bool _captionsEnabled = true;
+  bool _musicEnabled = false;
+  bool _exporting = false;
 
-  GalleryArtwork get _selected => widget.artworks.firstWhere(
-    (item) => item.id == _selectedId,
-    orElse: () => widget.artworks.first,
-  );
+  AnimationStoryPage get _currentPage => _storyPages[_pageIndex];
 
   @override
   void initState() {
     super.initState();
-    _selectedId = widget.artworks.first.id;
+    _storyPages = _generateStoryPages();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2200),
     )..repeat();
   }
 
@@ -6893,15 +6949,154 @@ class _AnimationPageState extends State<AnimationPage>
     super.dispose();
   }
 
-  Widget _animatedArtwork() => AnimatedBuilder(
+  List<AnimationStoryPage> _generateStoryPages() {
+    final source = widget.artworks
+        .where((artwork) => artwork.isUserCreated)
+        .followedBy(widget.artworks)
+        .toList();
+    final picked = source.take(math.min(3, source.length)).toList();
+    const subtitles = ['我的故事从第一笔开始', '画里的朋友轻轻动了起来', '最后一页，把想象留在星光里'];
+    const motions = [
+      ArtworkMotion.breathe,
+      ArtworkMotion.replay,
+      ArtworkMotion.jump,
+    ];
+    const stickers = [
+      StorySticker.sparkle,
+      StorySticker.rainbow,
+      StorySticker.moon,
+    ];
+    return [
+      for (var i = 0; i < picked.length; i++)
+        AnimationStoryPage(
+          artwork: picked[i],
+          subtitle: subtitles[i % subtitles.length],
+          motion: motions[i % motions.length],
+          sticker: stickers[i % stickers.length],
+        ),
+    ];
+  }
+
+  void _regenerateStory() {
+    setState(() {
+      _storyPages = _generateStoryPages();
+      _pageIndex = 0;
+    });
+    unawaited(widget.audio.success(context.tr('我的故事已经生成')));
+  }
+
+  void _updateCurrentPage(AnimationStoryPage page) {
+    setState(() {
+      _storyPages[_pageIndex] = page;
+    });
+  }
+
+  void _showExportMessage(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: LocalizedText(text),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _exportGif() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final bytes = await _renderStoryGif(
+        pages: _storyPages,
+        size: const Size(420, 320),
+      );
+      final path = await GalleryExportService.saveStoryFile(
+        bytes,
+        fileName:
+            'little_artist_story_${DateTime.now().millisecondsSinceEpoch}.gif',
+      );
+      _showExportMessage('GIF 已保存：$path');
+    } catch (_) {
+      _showExportMessage('GIF 导出失败，请再试一次');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _exportMp4() async {
+    _showExportMessage('MP4 导出需要接入原生视频编码器，本版已准备故事板和 GIF 导出');
+  }
+
+  Future<Uint8List> _renderStoryGif({
+    required List<AnimationStoryPage> pages,
+    required Size size,
+  }) async {
+    final encoder = img.GifEncoder(delay: 12, repeat: 0, samplingFactor: 12);
+    for (final page in pages) {
+      for (var frame = 0; frame < 10; frame++) {
+        final progress = frame / 10;
+        final image = await _renderStoryFrame(page, size, progress);
+        encoder.addFrame(image, duration: 12);
+      }
+    }
+    final output = encoder.finish();
+    if (output == null) throw StateError('Could not encode story gif');
+    return Uint8List.fromList(output);
+  }
+
+  Future<img.Image> _renderStoryFrame(
+    AnimationStoryPage page,
+    Size size,
+    double progress,
+  ) async {
+    final decoded = page.artwork.pngBytes == null
+        ? null
+        : await _decodeUiImage(page.artwork.pngBytes!);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    StoryAnimationFramePainter(
+      page: page,
+      progress: progress,
+      captionsEnabled: true,
+      decodedArtwork: decoded,
+    ).paint(canvas, size);
+    final picture = recorder.endRecording();
+    final uiImage = await picture.toImage(
+      size.width.round(),
+      size.height.round(),
+    );
+    final data = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+    decoded?.dispose();
+    uiImage.dispose();
+    picture.dispose();
+    if (data == null) throw StateError('Could not render story frame');
+    return img.Image.fromBytes(
+      width: size.width.round(),
+      height: size.height.round(),
+      bytes: data.buffer,
+      order: img.ChannelOrder.rgba,
+    );
+  }
+
+  Future<ui.Image> _decodeUiImage(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    return frame.image;
+  }
+
+  Widget _animatedArtwork(AnimationStoryPage page) => AnimatedBuilder(
     animation: _controller,
-    child: ArtworkThumbnail(artwork: _selected),
+    child: ArtworkThumbnail(artwork: page.artwork),
     builder: (context, child) {
       final value = _controller.value;
-      final replayData = _selected.replayData;
-      return switch (_motion) {
+      final replayData = page.artwork.replayData;
+      return switch (page.motion) {
+        ArtworkMotion.breathe => Transform.scale(
+          scale: 1 + math.sin(value * math.pi * 2) * .035,
+          child: child,
+        ),
         ArtworkMotion.jump => Transform.translate(
-          offset: Offset(0, -math.sin(value * math.pi).abs() * 90),
+          offset: Offset(0, -math.sin(value * math.pi).abs() * 42),
           child: child,
         ),
         ArtworkMotion.blink => Transform.scale(
@@ -6909,8 +7104,8 @@ class _AnimationPageState extends State<AnimationPage>
           child: child,
         ),
         ArtworkMotion.fly => Transform.translate(
-          offset: Offset((value - .5) * 250, -math.sin(value * math.pi) * 80),
-          child: Transform.rotate(angle: (value - .5) * .15, child: child),
+          offset: Offset((value - .5) * 90, -math.sin(value * math.pi) * 32),
+          child: Transform.rotate(angle: (value - .5) * .08, child: child),
         ),
         ArtworkMotion.replay when replayData != null => CustomPaint(
           painter: StrokeReplayPainter(
@@ -6938,73 +7133,57 @@ class _AnimationPageState extends State<AnimationPage>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
-          final stage = Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFE7E0FF), Color(0xFFD8F5FF)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(32),
-            ),
-            child: Stack(
-              children: [
-                const Positioned(
-                  top: 28,
-                  left: 36,
-                  child: LocalizedText(
-                    '✦',
-                    style: TextStyle(fontSize: 35, color: _orange),
-                  ),
-                ),
-                const Positioned(
-                  bottom: 34,
-                  right: 42,
-                  child: LocalizedText(
-                    '✧',
-                    style: TextStyle(fontSize: 46, color: Color(0xFF8C63E8)),
-                  ),
-                ),
-                Center(
-                  child: SizedBox(
-                    width: 280,
-                    height: 250,
-                    child: _animatedArtwork(),
-                  ),
-                ),
-                Positioned(
-                  right: 14,
-                  top: 14,
-                  child: IconButton.filled(
-                    key: const ValueKey('animation-play-toggle'),
-                    tooltip: context.tr(
-                      _controller.isAnimating ? '暂停动画' : '播放动画',
-                    ),
-                    onPressed: () => setState(() {
-                      if (_controller.isAnimating) {
-                        _controller.stop();
-                      } else {
-                        _controller.repeat();
-                      }
-                    }),
-                    icon: Icon(
-                      _controller.isAnimating
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          final stage = StoryAnimationStage(
+            page: _currentPage,
+            pageNumber: _pageIndex + 1,
+            pageCount: _storyPages.length,
+            musicEnabled: _musicEnabled,
+            captionsEnabled: _captionsEnabled,
+            animatedArtwork: _animatedArtwork(_currentPage),
+            isPlaying: _controller.isAnimating,
+            onTogglePlay: () => setState(() {
+              if (_controller.isAnimating) {
+                _controller.stop();
+              } else {
+                _controller.repeat();
+              }
+            }),
           );
-          final controls = Container(
+          final controls = StoryPaper(
+            color: StudioVisuals.paper,
+            borderRadius: 28,
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-            ),
             child: ListView(
               children: [
+                FilledButton.icon(
+                  key: const ValueKey('animation-generate-story'),
+                  onPressed: _regenerateStory,
+                  icon: const Icon(Icons.auto_stories_rounded),
+                  label: const LocalizedText('一键生成我的故事'),
+                ),
+                const SizedBox(height: 14),
+                const LocalizedText(
+                  '多页绘本故事板',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var index = 0; index < _storyPages.length; index++)
+                      ChoiceChip(
+                        key: ValueKey('animation-story-page-$index'),
+                        selected: _pageIndex == index,
+                        label: LocalizedText('第 ${index + 1} 页'),
+                        selectedColor: _mint,
+                        onSelected: (_) => setState(() {
+                          _pageIndex = index;
+                        }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 const LocalizedText(
                   '选择一幅作品',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
@@ -7020,17 +7199,21 @@ class _AnimationPageState extends State<AnimationPage>
                       final artwork = widget.artworks[index];
                       return InkWell(
                         key: ValueKey('animation-artwork-${artwork.id}'),
-                        onTap: () => setState(() => _selectedId = artwork.id),
+                        onTap: () => _updateCurrentPage(
+                          _currentPage.copyWith(artwork: artwork),
+                        ),
                         child: Container(
                           width: 86,
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: _selectedId == artwork.id
+                              color: _currentPage.artwork.id == artwork.id
                                   ? _orange
                                   : const Color(0xFFE8D9CA),
-                              width: _selectedId == artwork.id ? 3 : 1,
+                              width: _currentPage.artwork.id == artwork.id
+                                  ? 3
+                                  : 1,
                             ),
                           ),
                           child: ArtworkThumbnail(artwork: artwork),
@@ -7050,17 +7233,87 @@ class _AnimationPageState extends State<AnimationPage>
                     padding: const EdgeInsets.only(bottom: 7),
                     child: ChoiceChip(
                       key: ValueKey('animation-motion-${motion.name}'),
-                      selected: _motion == motion,
+                      selected: _currentPage.motion == motion,
                       selectedColor: _rose,
                       avatar: Icon(motion.icon, size: 19),
                       label: LocalizedText(motion.label),
                       onSelected: (_) {
-                        setState(() => _motion = motion);
+                        _updateCurrentPage(
+                          _currentPage.copyWith(motion: motion),
+                        );
                         _controller.repeat(period: _controller.duration);
                         unawaited(widget.audio.tap());
                       },
                     ),
                   ),
+                const SizedBox(height: 12),
+                const LocalizedText(
+                  '贴纸和字幕',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final sticker in StorySticker.values)
+                      ChoiceChip(
+                        selected: _currentPage.sticker == sticker,
+                        selectedColor: sticker.color,
+                        avatar: Icon(sticker.icon, size: 18),
+                        label: LocalizedText(sticker.label),
+                        onSelected: (_) => _updateCurrentPage(
+                          _currentPage.copyWith(sticker: sticker),
+                        ),
+                      ),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const LocalizedText(
+                    '显示字幕',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  value: _captionsEnabled,
+                  onChanged: (value) =>
+                      setState(() => _captionsEnabled = value),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const LocalizedText(
+                    '轻柔背景音乐',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: const LocalizedText('播放时使用克制的声音提示'),
+                  value: _musicEnabled,
+                  onChanged: (value) {
+                    setState(() => _musicEnabled = value);
+                    unawaited(
+                      value
+                          ? widget.audio.speak(context.tr('轻柔背景音乐已开启'))
+                          : widget.audio.tap(),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  key: const ValueKey('animation-export-gif'),
+                  onPressed: _exporting ? null : _exportGif,
+                  icon: _exporting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.gif_box_rounded),
+                  label: LocalizedText(_exporting ? '正在导出 GIF…' : '保存 GIF'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('animation-export-mp4'),
+                  onPressed: _exportMp4,
+                  icon: const Icon(Icons.movie_creation_rounded),
+                  label: const LocalizedText('保存 MP4'),
+                ),
               ],
             ),
           );
@@ -7083,6 +7336,358 @@ class _AnimationPageState extends State<AnimationPage>
         },
       ),
     );
+  }
+}
+
+class StoryAnimationStage extends StatelessWidget {
+  const StoryAnimationStage({
+    super.key,
+    required this.page,
+    required this.pageNumber,
+    required this.pageCount,
+    required this.musicEnabled,
+    required this.captionsEnabled,
+    required this.animatedArtwork,
+    required this.isPlaying,
+    required this.onTogglePlay,
+  });
+
+  final AnimationStoryPage page;
+  final int pageNumber;
+  final int pageCount;
+  final bool musicEnabled;
+  final bool captionsEnabled;
+  final Widget animatedArtwork;
+  final bool isPlaying;
+  final VoidCallback onTogglePlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return StoryPaper(
+      color: const Color(0xFFFFF8E8),
+      borderRadius: 32,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: StoryAnimationBackdropPainter(sticker: page.sticker),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            top: 16,
+            child: StoryPaper(
+              color: Colors.white.withValues(alpha: .88),
+              borderRadius: 99,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              shadow: false,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(page.motion.icon, size: 17, color: _brown),
+                  const SizedBox(width: 6),
+                  LocalizedText(
+                    '第 $pageNumber / $pageCount 页',
+                    style: const TextStyle(
+                      color: _ink,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 18,
+            top: 16,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (musicEnabled)
+                  StoryPaper(
+                    color: StudioVisuals.leaf.withValues(alpha: .70),
+                    borderRadius: 99,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    shadow: false,
+                    child: const Icon(
+                      Icons.music_note_rounded,
+                      color: _ink,
+                      size: 18,
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  key: const ValueKey('animation-play-toggle'),
+                  tooltip: context.tr(isPlaying ? '暂停动画' : '播放动画'),
+                  onPressed: onTogglePlay,
+                  icon: Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Center(
+            child: SizedBox(width: 300, height: 260, child: animatedArtwork),
+          ),
+          Positioned(
+            right: 46,
+            bottom: 88,
+            child: StoryStickerChip(sticker: page.sticker, large: true),
+          ),
+          if (captionsEnabled)
+            Positioned(
+              left: 26,
+              right: 26,
+              bottom: 24,
+              child: StoryPaper(
+                color: Colors.white.withValues(alpha: .90),
+                borderRadius: 24,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shadow: false,
+                child: LocalizedText(
+                  page.subtitle,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 18,
+                    height: 1.25,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class StoryStickerChip extends StatelessWidget {
+  const StoryStickerChip({
+    super.key,
+    required this.sticker,
+    this.large = false,
+  });
+
+  final StorySticker sticker;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    return StoryPaper(
+      color: sticker.color.withValues(alpha: .84),
+      borderRadius: 99,
+      padding: EdgeInsets.all(large ? 13 : 8),
+      shadow: false,
+      child: Icon(sticker.icon, color: _ink, size: large ? 30 : 18),
+    );
+  }
+}
+
+class StoryAnimationBackdropPainter extends CustomPainter {
+  const StoryAnimationBackdropPainter({required this.sticker});
+
+  final StorySticker sticker;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final wash = Paint()
+      ..style = PaintingStyle.fill
+      ..color = sticker.color.withValues(alpha: .12);
+    canvas.drawCircle(Offset(size.width * .18, size.height * .24), 92, wash);
+    canvas.drawCircle(
+      Offset(size.width * .82, size.height * .70),
+      118,
+      wash..color = StudioVisuals.sky.withValues(alpha: .10),
+    );
+    final line = Paint()
+      ..color = _brown.withValues(alpha: .10)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 12; i++) {
+      final y = 54.0 + i * 22;
+      canvas.drawLine(
+        Offset(26 + (i % 3) * 8, y),
+        Offset(size.width - 30 - (i % 4) * 9, y + math.sin(i) * 5),
+        line,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant StoryAnimationBackdropPainter oldDelegate) =>
+      oldDelegate.sticker != sticker;
+}
+
+class StoryAnimationFramePainter extends CustomPainter {
+  const StoryAnimationFramePainter({
+    required this.page,
+    required this.progress,
+    required this.captionsEnabled,
+    this.decodedArtwork,
+  });
+
+  final AnimationStoryPage page;
+  final double progress;
+  final bool captionsEnabled;
+  final ui.Image? decodedArtwork;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFFFF8E8),
+    );
+    StoryAnimationBackdropPainter(sticker: page.sticker).paint(canvas, size);
+
+    final artworkRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height * .46),
+      width: size.width * .56,
+      height: size.height * .50,
+    );
+    canvas.save();
+    final transform = _motionOffset(page.motion, progress);
+    canvas.translate(transform.dx, transform.dy);
+    final scale = page.motion == ArtworkMotion.breathe
+        ? 1 + math.sin(progress * math.pi * 2) * .035
+        : 1.0;
+    canvas.translate(artworkRect.center.dx, artworkRect.center.dy);
+    canvas.scale(scale);
+    canvas.translate(-artworkRect.center.dx, -artworkRect.center.dy);
+    _paintArtwork(canvas, artworkRect);
+    canvas.restore();
+
+    _paintSticker(canvas, Offset(size.width * .76, size.height * .68));
+    if (captionsEnabled) _paintCaption(canvas, size);
+  }
+
+  Offset _motionOffset(ArtworkMotion motion, double value) {
+    return switch (motion) {
+      ArtworkMotion.breathe => Offset.zero,
+      ArtworkMotion.blink => Offset.zero,
+      ArtworkMotion.jump => Offset(0, -math.sin(value * math.pi).abs() * 22),
+      ArtworkMotion.fly => Offset(
+        (value - .5) * 50,
+        -math.sin(value * math.pi) * 20,
+      ),
+      ArtworkMotion.replay => Offset.zero,
+    };
+  }
+
+  void _paintArtwork(Canvas canvas, Rect rect) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(20));
+    canvas.drawRRect(rrect, Paint()..color = page.artwork.color);
+    canvas.save();
+    canvas.clipRRect(rrect);
+    if (page.motion == ArtworkMotion.replay &&
+        page.artwork.replayData != null) {
+      canvas.save();
+      canvas.translate(rect.left, rect.top);
+      StrokeReplayPainter(
+        replayData: page.artwork.replayData!,
+        progress: progress,
+      ).paint(canvas, rect.size);
+      canvas.restore();
+    } else if (decodedArtwork != null) {
+      canvas.drawImageRect(
+        decodedArtwork!,
+        Rect.fromLTWH(
+          0,
+          0,
+          decodedArtwork!.width.toDouble(),
+          decodedArtwork!.height.toDouble(),
+        ),
+        rect.deflate(10),
+        Paint(),
+      );
+    } else {
+      canvas.save();
+      canvas.translate(rect.left + 10, rect.top + 10);
+      SketchPainter(
+        page.artwork.kind ?? SketchKind.sun,
+      ).paint(canvas, Size(rect.width - 20, rect.height - 20));
+      canvas.restore();
+    }
+    if (page.motion == ArtworkMotion.blink &&
+        progress > .42 &&
+        progress < .52) {
+      canvas.drawRect(
+        rect.deflate(24),
+        Paint()..color = Colors.white.withValues(alpha: .34),
+      );
+    }
+    canvas.restore();
+  }
+
+  void _paintSticker(Canvas canvas, Offset center) {
+    final paint = Paint()..color = page.sticker.color.withValues(alpha: .88);
+    canvas.drawCircle(center, 24, paint);
+    final iconPainter = TextPainter(
+      text: TextSpan(
+        text: switch (page.sticker) {
+          StorySticker.sparkle => '*',
+          StorySticker.moon => ')',
+          StorySticker.rainbow => '~',
+          StorySticker.flower => '+',
+        },
+        style: const TextStyle(
+          color: _ink,
+          fontSize: 30,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    iconPainter.paint(
+      canvas,
+      center - Offset(iconPainter.width / 2, iconPainter.height / 2),
+    );
+  }
+
+  void _paintCaption(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(30, size.height - 70, size.width - 60, 46),
+      const Radius.circular(18),
+    );
+    canvas.drawRRect(
+      rect,
+      Paint()..color = Colors.white.withValues(alpha: .90),
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: page.subtitle,
+        style: const TextStyle(
+          color: _ink,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      maxLines: 2,
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: size.width - 86);
+    painter.paint(
+      canvas,
+      Offset((size.width - painter.width) / 2, size.height - 58),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant StoryAnimationFramePainter oldDelegate) {
+    return oldDelegate.page != page ||
+        oldDelegate.progress != progress ||
+        oldDelegate.captionsEnabled != captionsEnabled ||
+        oldDelegate.decodedArtwork != decodedArtwork;
   }
 }
 

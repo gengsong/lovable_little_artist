@@ -44,6 +44,9 @@ class StudioLocalizations {
     if ((match = RegExp(r'^第 (\d+) / (\d+) 步$').firstMatch(input)) != null) {
       return 'Step ${match!.group(1)} of ${match.group(2)}';
     }
+    if ((match = RegExp(r'^第 (\d+) / (\d+) 页$').firstMatch(input)) != null) {
+      return 'Page ${match!.group(1)} of ${match.group(2)}';
+    }
     if ((match = RegExp(r'^(\d+) / (\d+) 步$').firstMatch(input)) != null) {
       return '${match!.group(1)} / ${match.group(2)} steps';
     }
@@ -87,6 +90,9 @@ class StudioLocalizations {
     }
     if (input.startsWith('已保存到作品集，约 ') && input.endsWith(' KB')) {
       return 'Saved to Gallery · ${input.substring(10)}';
+    }
+    if (input.startsWith('GIF 已保存：')) {
+      return 'GIF saved: ${input.substring(7)}';
     }
     if (input.startsWith('已经完成 ') && input.endsWith(' 步，接着画吧！')) {
       final value = input.substring(5, input.length - 7);
@@ -441,10 +447,35 @@ class StudioLocalizations {
     '选一幅画': 'Choose Artwork',
     '选择一幅作品': 'Choose an Artwork',
     '选择动画': 'Choose an Animation',
+    '轻轻呼吸': 'Gentle Breathing',
     '跳一跳': 'Jump',
     '眨眼': 'Blink',
     '飞起来': 'Fly',
     '笔画回放': 'Stroke Replay',
+    '星星贴纸': 'Star Sticker',
+    '月亮贴纸': 'Moon Sticker',
+    '彩虹贴纸': 'Rainbow Sticker',
+    '小花贴纸': 'Flower Sticker',
+    '我的故事从第一笔开始': 'My story begins with the first line',
+    '画里的朋友轻轻动了起来': 'The friend in the picture gently comes alive',
+    '最后一页，把想象留在星光里': 'On the last page, imagination stays in the starlight',
+    '我的故事已经生成': 'My story has been created',
+    '多页绘本故事板': 'Multi-page Storyboard',
+    '第 1 页': 'Page 1',
+    '第 2 页': 'Page 2',
+    '第 3 页': 'Page 3',
+    '贴纸和字幕': 'Stickers & Captions',
+    '显示字幕': 'Show Captions',
+    '轻柔背景音乐': 'Gentle Background Music',
+    '播放时使用克制的声音提示': 'Use quiet sound cues while playing',
+    '轻柔背景音乐已开启': 'Gentle background music is on',
+    '一键生成我的故事': 'Create My Story',
+    '保存 GIF': 'Save GIF',
+    '正在导出 GIF…': 'Exporting GIF…',
+    'GIF 导出失败，请再试一次': 'GIF export failed. Please try again.',
+    '保存 MP4': 'Save MP4',
+    'MP4 导出需要接入原生视频编码器，本版已准备故事板和 GIF 导出':
+        'MP4 export needs a native video encoder. This version has storyboard and GIF export ready.',
     '暂停动画': 'Pause Animation',
     '播放动画': 'Play Animation',
     '请家长回答': 'For Parents',
