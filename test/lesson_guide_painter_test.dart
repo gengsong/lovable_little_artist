@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lovable_little_artist/data/models/drawing_stroke.dart';
 import 'package:lovable_little_artist/main.dart';
 
 Future<ui.Image> _render(CustomPainter painter) async {
@@ -83,4 +84,48 @@ void main() {
     }
     image.dispose();
   });
+
+  test(
+    'eraser reveals the current paper color instead of painting white',
+    () async {
+      final image = await _render(
+        NativeCanvasPainter(
+          strokes: [
+            DrawingStroke(
+              tool: DrawingTool.fill,
+              color: Colors.red,
+              baseWidth: 1,
+              points: const [DrawingPoint(Offset(0, 0), 1)],
+            ),
+            DrawingStroke(
+              tool: DrawingTool.marker,
+              color: Colors.blue,
+              baseWidth: 34,
+              points: const [
+                DrawingPoint(Offset(20, 150), 1),
+                DrawingPoint(Offset(280, 150), 1),
+              ],
+            ),
+            DrawingStroke(
+              tool: DrawingTool.eraser,
+              color: Colors.white,
+              baseWidth: 48,
+              points: const [
+                DrawingPoint(Offset(120, 150), 1),
+                DrawingPoint(Offset(180, 150), 1),
+              ],
+            ),
+          ],
+        ),
+      );
+      final bytes = await _rgba(image);
+      final index = (150 * 300 + 150) * 4;
+
+      expect(bytes.getUint8(index), greaterThan(200));
+      expect(bytes.getUint8(index + 1), lessThan(80));
+      expect(bytes.getUint8(index + 2), lessThan(80));
+
+      image.dispose();
+    },
+  );
 }

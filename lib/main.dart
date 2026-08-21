@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:lovable_little_artist/local_artist_store.dart';
 import 'package:lovable_little_artist/studio_audio.dart';
@@ -12,17 +12,15 @@ import 'package:lovable_little_artist/studio_localizations.dart';
 import 'package:lovable_little_artist/core/constants/app_constants.dart';
 import 'package:lovable_little_artist/core/theme/app_colors.dart';
 import 'package:lovable_little_artist/core/theme/app_theme.dart';
+import 'package:lovable_little_artist/core/utils/canvas_view_transform.dart';
 import 'package:lovable_little_artist/core/visual/studio_visual_identity.dart';
+import 'package:lovable_little_artist/data/models/drawing_stroke.dart';
 import 'package:lovable_little_artist/data/models/gallery_artwork.dart';
 import 'package:lovable_little_artist/data/models/studio_tab.dart';
 import 'package:lovable_little_artist/services/gallery_export_service.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
   runApp(const LittleArtistVerseApp());
 }
 
@@ -2843,8 +2841,14 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   final _canvasKey = GlobalKey();
   final _strokes = <DrawingStroke>[];
   final _redoStack = <DrawingStroke>[];
+  final _activePointers = <int, Offset>{};
   DrawingStroke? _activeStroke;
   int? _activePointer;
+  CanvasViewTransform _canvasView = const CanvasViewTransform();
+  double? _gestureStartDistance;
+  Offset? _gestureStartCenter;
+  double _gestureStartScale = 1;
+  Offset _gestureStartOffset = Offset.zero;
   DrawingTool _tool = DrawingTool.crayon;
   Color _color = _orange;
   double _width = 10;
@@ -2880,7 +2884,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   Future<void> _restoreDraft() async {
     final draft = await widget.store.loadDraft(_draftKey);
     if (!mounted || draft == null) return;
-    final restored = _strokesFromDraft(draft);
+    final restored = strokesFromDraft(draft);
     setState(() {
       _strokes
         ..clear()
@@ -2907,7 +2911,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
       return;
     }
     await widget.store.saveDraft(_draftKey, {
-      ..._draftFromStrokes(_strokes),
+      ...draftFromStrokes(_strokes),
       'challengeId': widget.challenge.id,
       'magicTaskIndex': _magicTaskIndex,
     });
@@ -2949,13 +2953,69 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
     return event.radiusMajor >= 30 || event.radiusMinor >= 24;
   }
 
+  Offset _toCanvasPosition(Offset localPosition) =>
+      _canvasView.toCanvasPosition(localPosition);
+
+  void _beginViewportGesture() {
+    if (_activePointers.length < 2) return;
+    final points = _activePointers.values.take(2).toList();
+    _gestureStartDistance = (points[1] - points[0]).distance;
+    _gestureStartCenter = Offset.lerp(points[0], points[1], .5);
+    _gestureStartScale = _canvasView.scale;
+    _gestureStartOffset = _canvasView.offset;
+  }
+
+  void _updateViewportGesture() {
+    if (_activePointers.length < 2) return;
+    if (_gestureStartDistance == null || _gestureStartCenter == null) {
+      _beginViewportGesture();
+      return;
+    }
+    final points = _activePointers.values.take(2).toList();
+    final distance = (points[1] - points[0]).distance;
+    final center = Offset.lerp(points[0], points[1], .5)!;
+    setState(() {
+      _canvasView = _canvasView.updateFromGesture(
+        startDistance: _gestureStartDistance!,
+        startCenter: _gestureStartCenter!,
+        startScale: _gestureStartScale,
+        startOffset: _gestureStartOffset,
+        currentDistance: distance,
+        currentCenter: center,
+      );
+    });
+  }
+
+  void _resetCanvasView() {
+    setState(() {
+      _canvasView = _canvasView.reset();
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+    });
+  }
+
   void _startStroke(PointerDownEvent event) {
-    if (_activePointer != null || _isPalmTouch(event)) return;
+    if (_isPalmTouch(event)) return;
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1) {
+      if (_activeStroke != null && _activeStroke!.points.length <= 1) {
+        setState(() => _strokes.remove(_activeStroke));
+      } else {
+        setState(() => simplifyStrokeInPlace(_activeStroke));
+      }
+      _activePointer = null;
+      _activeStroke = null;
+      _beginViewportGesture();
+      return;
+    }
+    if (_activePointer != null) return;
     final stroke = DrawingStroke(
       tool: _tool,
       color: _tool == DrawingTool.eraser ? Colors.white : _color,
       baseWidth: _tool == DrawingTool.eraser ? _width * 2.4 : _width,
-      points: [DrawingPoint(event.localPosition, _pressure(event))],
+      points: [
+        DrawingPoint(_toCanvasPosition(event.localPosition), _pressure(event)),
+      ],
     );
     setState(() {
       _redoStack.clear();
@@ -2972,16 +3032,29 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   }
 
   void _extendStroke(PointerMoveEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1) {
+      _updateViewportGesture();
+      return;
+    }
     if (event.pointer != _activePointer || _tool.isDiscrete) return;
     setState(
       () => _activeStroke?.points.add(
-        DrawingPoint(event.localPosition, _pressure(event)),
+        DrawingPoint(_toCanvasPosition(event.localPosition), _pressure(event)),
       ),
     );
   }
 
   void _endStroke(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) {
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+    } else {
+      _beginViewportGesture();
+    }
     if (event.pointer != _activePointer) return;
+    setState(() => simplifyStrokeInPlace(_activeStroke));
     _activePointer = null;
     _activeStroke = null;
     _scheduleAutosave();
@@ -3057,7 +3130,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
           : const Size(720, 520);
       final pngBytes = await _renderDrawingPng(_strokes, size);
       final replayData = {
-        ..._draftFromStrokes(_strokes, canvasSize: size),
+        ...draftFromStrokes(_strokes, canvasSize: size),
         'challengeId': widget.challenge.id,
         'magicTask': _challengeMagicTasks[_magicTaskIndex],
       };
@@ -3157,17 +3230,40 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                   onPointerMove: _extendStroke,
                   onPointerUp: _endStroke,
                   onPointerCancel: _endStroke,
-                  child: CustomPaint(
-                    key: _canvasKey,
-                    painter: NativeCanvasPainter(
-                      strokes: _strokes,
-                      guide: _showGuide
-                          ? ChallengeGuidePainter(widget.challenge.guide)
-                          : null,
+                  child: Transform.translate(
+                    offset: _canvasView.offset,
+                    child: Transform.scale(
+                      scale: _canvasView.scale,
+                      alignment: Alignment.topLeft,
+                      child: CustomPaint(
+                        key: _canvasKey,
+                        painter: NativeCanvasPainter(
+                          strokes: _strokes,
+                          guide: _showGuide
+                              ? ChallengeGuidePainter(widget.challenge.guide)
+                              : null,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
                     ),
-                    child: const SizedBox.expand(),
                   ),
                 ),
+                if (_canvasView.scale > 1.01)
+                  Positioned(
+                    right: 14,
+                    top: 72,
+                    child: Material(
+                      color: const Color(0xFFFFF8D9).withValues(alpha: .94),
+                      borderRadius: BorderRadius.circular(99),
+                      child: IconButton(
+                        key: const ValueKey('daily-challenge-reset-view'),
+                        tooltip: context.tr('复位画布'),
+                        onPressed: _resetCanvasView,
+                        icon: const Icon(Icons.center_focus_strong_rounded),
+                        color: _brown,
+                      ),
+                    ),
+                  ),
                 Positioned(
                   left: 14,
                   top: 14,
@@ -3928,11 +4024,24 @@ class DrawPage extends StatefulWidget {
 class _DrawPageState extends State<DrawPage> {
   final _canvasKey = GlobalKey();
   final _strokes = <DrawingStroke>[];
-  final _redoStack = <DrawingStroke>[];
+  final _undoStack = <List<DrawingStroke>>[];
+  final _redoStack = <List<DrawingStroke>>[];
   final _activePointers = <int, Offset>{};
   DrawingStroke? _activeStroke;
   int? _activePointer;
+  int? _selectedStickerIndex;
+  Offset? _lastStickerPosition;
+  bool _movingSticker = false;
+  bool _stickerHistoryCaptured = false;
+  double? _stickerGestureStartDistance;
+  double _stickerStartWidth = 1;
+  CanvasViewTransform _canvasView = const CanvasViewTransform();
+  double? _gestureStartDistance;
+  Offset? _gestureStartCenter;
+  double _gestureStartScale = 1;
+  Offset _gestureStartOffset = Offset.zero;
   DrawingTool _tool = DrawingTool.crayon;
+  DrawingLayer _activeLayer = DrawingLayer.artwork;
   Color _color = _orange;
   double _width = AppConstants.defaultStrokeWidth;
   DrawSaveStatus _saveStatus = DrawSaveStatus.idle;
@@ -3940,7 +4049,7 @@ class _DrawPageState extends State<DrawPage> {
   Timer? _savedIndicatorTimer;
   bool _draftRestored = false;
 
-  bool get _canUndo => _strokes.isNotEmpty;
+  bool get _canUndo => _undoStack.isNotEmpty;
   bool get _canRedo => _redoStack.isNotEmpty;
   bool get _isEditing => widget.editingArtwork != null;
   String get _draftKey => _isEditing
@@ -3974,12 +4083,15 @@ class _DrawPageState extends State<DrawPage> {
         await widget.store.loadDraft(_draftKey) ??
         widget.editingArtwork?.replayData;
     if (!mounted) return;
-    final restored = _strokesFromDraft(draft);
+    final restored = strokesFromDraft(draft);
     setState(() {
       _strokes
         ..clear()
         ..addAll(restored);
       _draftRestored = restored.isNotEmpty;
+      _undoStack.clear();
+      _redoStack.clear();
+      _selectedStickerIndex = null;
     });
     if (_draftRestored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4008,7 +4120,7 @@ class _DrawPageState extends State<DrawPage> {
         _setSaveStatus(DrawSaveStatus.idle);
         return;
       }
-      await widget.store.saveDraft(_draftKey, _draftFromStrokes(_strokes));
+      await widget.store.saveDraft(_draftKey, draftFromStrokes(_strokes));
       _setSaveStatus(DrawSaveStatus.saved);
     } catch (_) {
       _setSaveStatus(DrawSaveStatus.error);
@@ -4028,26 +4140,187 @@ class _DrawPageState extends State<DrawPage> {
     }
   }
 
+  List<DrawingStroke> _copyStrokes() => [
+    for (final stroke in _strokes) stroke.copy(),
+  ];
+
+  void _rememberHistory() {
+    _undoStack.add(_copyStrokes());
+    if (_undoStack.length > 80) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _restoreHistorySnapshot(List<DrawingStroke> snapshot) {
+    _strokes
+      ..clear()
+      ..addAll([for (final stroke in snapshot) stroke.copy()]);
+    _selectedStickerIndex = null;
+    _activeStroke = null;
+    _activePointer = null;
+    _movingSticker = false;
+    _lastStickerPosition = null;
+  }
+
+  Offset _toCanvasPosition(Offset localPosition) =>
+      _canvasView.toCanvasPosition(localPosition);
+
+  DrawingLayer _layerForNewStroke() =>
+      _tool == DrawingTool.fill || _tool == DrawingTool.sticker
+      ? _tool.defaultLayer
+      : _activeLayer;
+
+  int? _hitSticker(Offset canvasPosition) {
+    for (var index = _strokes.length - 1; index >= 0; index--) {
+      final stroke = _strokes[index];
+      if (stroke.tool != DrawingTool.sticker || stroke.points.isEmpty) {
+        continue;
+      }
+      final radius = math.max(18.0, stroke.baseWidth * 2.5);
+      if ((stroke.points.first.offset - canvasPosition).distance <= radius) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  void _moveSelectedSticker(Offset canvasPosition) {
+    final index = _selectedStickerIndex;
+    final previous = _lastStickerPosition;
+    if (index == null || previous == null || index >= _strokes.length) return;
+    if (!_stickerHistoryCaptured) {
+      _rememberHistory();
+      _stickerHistoryCaptured = true;
+    }
+    final delta = canvasPosition - previous;
+    final stroke = _strokes[index];
+    setState(() {
+      for (var i = 0; i < stroke.points.length; i++) {
+        final point = stroke.points[i];
+        stroke.points[i] = DrawingPoint(point.offset + delta, point.pressure);
+      }
+      _lastStickerPosition = canvasPosition;
+    });
+  }
+
+  void _scaleSelectedSticker() {
+    final index = _selectedStickerIndex;
+    if (index == null ||
+        index >= _strokes.length ||
+        _activePointers.length < 2) {
+      return;
+    }
+    final points = _activePointers.values.take(2).toList();
+    final distance = (points[1] - points[0]).distance;
+    if (distance <= 0) return;
+    if (_stickerGestureStartDistance == null) {
+      _stickerGestureStartDistance = distance;
+      _stickerStartWidth = _strokes[index].baseWidth;
+    }
+    if (!_stickerHistoryCaptured) {
+      _rememberHistory();
+      _stickerHistoryCaptured = true;
+    }
+    final startDistance = math.max(1, _stickerGestureStartDistance!);
+    setState(() {
+      _strokes[index].baseWidth =
+          (_stickerStartWidth * distance / startDistance).clamp(8.0, 48.0);
+    });
+  }
+
+  void _beginViewportGesture() {
+    if (_activePointers.length < 2) return;
+    final points = _activePointers.values.take(2).toList();
+    _gestureStartDistance = (points[1] - points[0]).distance;
+    _gestureStartCenter = Offset.lerp(points[0], points[1], .5);
+    _gestureStartScale = _canvasView.scale;
+    _gestureStartOffset = _canvasView.offset;
+  }
+
+  void _cancelActiveStrokeForViewportGesture() {
+    final stroke = _activeStroke;
+    setState(() {
+      if (stroke != null && stroke.points.length <= 1) {
+        _strokes.remove(stroke);
+      } else {
+        simplifyStrokeInPlace(stroke);
+      }
+      _activePointer = null;
+      _activeStroke = null;
+    });
+  }
+
+  void _updateViewportGesture() {
+    if (_activePointers.length < 2) return;
+    if (_gestureStartDistance == null || _gestureStartCenter == null) {
+      _beginViewportGesture();
+      return;
+    }
+    final points = _activePointers.values.take(2).toList();
+    final distance = (points[1] - points[0]).distance;
+    final center = Offset.lerp(points[0], points[1], .5)!;
+    setState(() {
+      _canvasView = _canvasView.updateFromGesture(
+        startDistance: _gestureStartDistance!,
+        startCenter: _gestureStartCenter!,
+        startScale: _gestureStartScale,
+        startOffset: _gestureStartOffset,
+        currentDistance: distance,
+        currentCenter: center,
+      );
+    });
+  }
+
+  void _resetCanvasView() {
+    setState(() {
+      _canvasView = _canvasView.reset();
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+    });
+  }
+
   void _startStroke(PointerDownEvent event) {
     if (_isPalmTouch(event)) return;
     _activePointers[event.pointer] = event.localPosition;
     if (_activePointers.length > 1) {
-      _activePointer = null;
-      _activeStroke = null;
+      if (_selectedStickerIndex != null && _movingSticker) {
+        _stickerGestureStartDistance = null;
+        _scaleSelectedSticker();
+      } else {
+        _cancelActiveStrokeForViewportGesture();
+        _beginViewportGesture();
+      }
       return;
     }
     if (_activePointer != null) return;
+    final canvasPosition = _toCanvasPosition(event.localPosition);
+    if (_tool == DrawingTool.sticker) {
+      final stickerIndex = _hitSticker(canvasPosition);
+      if (stickerIndex != null) {
+        setState(() {
+          _selectedStickerIndex = stickerIndex;
+          _movingSticker = true;
+          _stickerHistoryCaptured = false;
+          _lastStickerPosition = canvasPosition;
+          _activePointer = event.pointer;
+        });
+        return;
+      }
+    }
+    _rememberHistory();
     final stroke = DrawingStroke(
       tool: _tool,
       color: _tool == DrawingTool.eraser ? Colors.white : _color,
       baseWidth: _tool == DrawingTool.eraser
           ? _width * AppConstants.eraserWidthMultiplier
           : _width,
-      points: [DrawingPoint(event.localPosition, _pressure(event))],
+      layerId: _layerForNewStroke().id,
+      points: [DrawingPoint(canvasPosition, _pressure(event))],
     );
     setState(() {
       _activePointer = event.pointer;
-      _redoStack.clear();
+      _selectedStickerIndex = _tool == DrawingTool.sticker
+          ? _strokes.length
+          : null;
       _activeStroke = _tool.isDiscrete ? null : stroke;
       _strokes.add(stroke);
     });
@@ -4059,12 +4332,25 @@ class _DrawPageState extends State<DrawPage> {
 
   void _extendStroke(PointerMoveEvent event) {
     _activePointers[event.pointer] = event.localPosition;
-    if (_activePointers.length > 1 ||
-        event.pointer != _activePointer ||
-        _tool.isDiscrete) {
+    if (_activePointers.length > 1) {
+      if (_selectedStickerIndex != null && _movingSticker) {
+        _scaleSelectedSticker();
+      } else {
+        _updateViewportGesture();
+      }
       return;
     }
-    final point = DrawingPoint(event.localPosition, _pressure(event));
+    if (_movingSticker && event.pointer == _activePointer) {
+      _moveSelectedSticker(_toCanvasPosition(event.localPosition));
+      return;
+    }
+    if (event.pointer != _activePointer || _tool.isDiscrete) {
+      return;
+    }
+    final point = DrawingPoint(
+      _toCanvasPosition(event.localPosition),
+      _pressure(event),
+    );
     final stroke = _activeStroke;
     if (stroke == null || !_shouldAppendPoint(stroke, point, event.kind)) {
       return;
@@ -4074,7 +4360,23 @@ class _DrawPageState extends State<DrawPage> {
 
   void _endStroke(PointerEvent event) {
     _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) {
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+      _stickerGestureStartDistance = null;
+    } else {
+      _beginViewportGesture();
+    }
     if (event.pointer != _activePointer) return;
+    if (_movingSticker) {
+      _activePointer = null;
+      _movingSticker = false;
+      _lastStickerPosition = null;
+      _stickerHistoryCaptured = false;
+      _scheduleAutosave();
+      return;
+    }
+    setState(() => simplifyStrokeInPlace(_activeStroke));
     _activePointer = null;
     _activeStroke = null;
     _scheduleAutosave();
@@ -4118,23 +4420,28 @@ class _DrawPageState extends State<DrawPage> {
 
   void _undo() {
     if (!_canUndo) return;
-    setState(() => _redoStack.add(_strokes.removeLast()));
+    setState(() {
+      _redoStack.add(_copyStrokes());
+      _restoreHistorySnapshot(_undoStack.removeLast());
+    });
     _scheduleAutosave();
   }
 
   void _redo() {
     if (!_canRedo) return;
-    setState(() => _strokes.add(_redoStack.removeLast()));
+    setState(() {
+      _undoStack.add(_copyStrokes());
+      _restoreHistorySnapshot(_redoStack.removeLast());
+    });
     _scheduleAutosave();
   }
 
   void _clear() {
     if (_strokes.isEmpty) return;
+    _rememberHistory();
     setState(() {
-      _redoStack
-        ..clear()
-        ..addAll(_strokes);
       _strokes.clear();
+      _selectedStickerIndex = null;
     });
     _scheduleAutosave();
   }
@@ -4168,7 +4475,7 @@ class _DrawPageState extends State<DrawPage> {
       data.lengthInBytes,
     );
     try {
-      final replayData = _draftFromStrokes(_strokes, canvasSize: boundary.size);
+      final replayData = draftFromStrokes(_strokes, canvasSize: boundary.size);
       if (_isEditing && !saveAsCopy) {
         await widget.onUpdated(widget.editingArtwork!, bytes, replayData);
       } else {
@@ -4216,6 +4523,7 @@ class _DrawPageState extends State<DrawPage> {
           final isWide = constraints.maxWidth >= 780;
           final tools = DrawingToolPanel(
             tool: _tool,
+            activeLayer: _activeLayer,
             color: _color,
             width: _width,
             colors: colors,
@@ -4223,6 +4531,7 @@ class _DrawPageState extends State<DrawPage> {
             canRedo: _canRedo,
             isEditing: _isEditing,
             onTool: (tool) => setState(() => _tool = tool),
+            onLayer: (layer) => setState(() => _activeLayer = layer),
             onColor: (color) => setState(() {
               _color = color;
               if (_tool == DrawingTool.eraser) _tool = DrawingTool.crayon;
@@ -4235,26 +4544,60 @@ class _DrawPageState extends State<DrawPage> {
             onSaveAs: _isEditing ? () => _savePreview(saveAsCopy: true) : null,
           );
 
-          final drawingSurface = RepaintBoundary(
-            key: _canvasKey,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: Listener(
-                key: const ValueKey('free-drawing-canvas'),
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: _startStroke,
-                onPointerMove: _extendStroke,
-                onPointerUp: _endStroke,
-                onPointerCancel: _endStroke,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: CustomPaint(
-                    painter: NativeCanvasPainter(strokes: _strokes),
-                    child: const SizedBox.expand(),
-                  ),
+          final drawingSurface = ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: Listener(
+              key: const ValueKey('free-drawing-canvas'),
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: _startStroke,
+              onPointerMove: _extendStroke,
+              onPointerUp: _endStroke,
+              onPointerCancel: _endStroke,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Transform.translate(
+                      offset: _canvasView.offset,
+                      child: Transform.scale(
+                        scale: _canvasView.scale,
+                        alignment: Alignment.topLeft,
+                        child: RepaintBoundary(
+                          key: _canvasKey,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: CustomPaint(
+                              painter: NativeCanvasPainter(strokes: _strokes),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_canvasView.scale > 1.01)
+                      Positioned(
+                        right: 14,
+                        top: 14,
+                        child: Material(
+                          color: const Color(0xFFFFF8D9).withValues(alpha: .94),
+                          borderRadius: BorderRadius.circular(99),
+                          child: IconButton(
+                            key: const ValueKey('free-drawing-reset-view'),
+                            tooltip: context.tr('复位画布'),
+                            onPressed: _resetCanvasView,
+                            icon: const Icon(Icons.center_focus_strong_rounded),
+                            color: _brown,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -4278,34 +4621,13 @@ class _DrawPageState extends State<DrawPage> {
             children: [
               Expanded(child: canvas),
               SizedBox(width: isWide ? 16 : 0, height: isWide ? 0 : 14),
-              SizedBox(width: isWide ? 178 : double.infinity, child: tools),
+              SizedBox(width: isWide ? 232 : double.infinity, child: tools),
             ],
           );
         },
       ),
     );
   }
-}
-
-enum DrawingTool {
-  crayon,
-  watercolor,
-  marker,
-  pencil,
-  glow,
-  eraser,
-  spray,
-  pattern,
-  stamp,
-  sticker,
-  fill,
-}
-
-extension DrawingToolBehavior on DrawingTool {
-  bool get isDiscrete =>
-      this == DrawingTool.stamp ||
-      this == DrawingTool.sticker ||
-      this == DrawingTool.fill;
 }
 
 enum DrawSaveStatus { idle, saving, saved, error }
@@ -4364,79 +4686,6 @@ class DrawStatusPill extends StatelessWidget {
   }
 }
 
-class DrawingPoint {
-  const DrawingPoint(this.offset, this.pressure);
-
-  final Offset offset;
-  final double pressure;
-}
-
-class DrawingStroke {
-  DrawingStroke({
-    required this.tool,
-    required this.color,
-    required this.baseWidth,
-    required this.points,
-  });
-
-  final DrawingTool tool;
-  final Color color;
-  final double baseWidth;
-  final List<DrawingPoint> points;
-}
-
-Map<String, Object?> _draftFromStrokes(
-  List<DrawingStroke> strokes, {
-  int? stepIndex,
-  Size? canvasSize,
-}) => {
-  'version': 1,
-  'stepIndex': ?stepIndex,
-  'updatedAt': DateTime.now().toUtc().toIso8601String(),
-  if (canvasSize != null) 'canvasWidth': canvasSize.width,
-  if (canvasSize != null) 'canvasHeight': canvasSize.height,
-  'strokes': [
-    for (final stroke in strokes)
-      {
-        'tool': stroke.tool.name,
-        'color': stroke.color.toARGB32(),
-        'width': stroke.baseWidth,
-        'points': [
-          for (final point in stroke.points)
-            [point.offset.dx, point.offset.dy, point.pressure],
-        ],
-      },
-  ],
-};
-
-List<DrawingStroke> _strokesFromDraft(Map<String, Object?>? draft) {
-  if (draft == null) return [];
-  try {
-    return [
-      for (final item in draft['strokes'] as List<dynamic>)
-        DrawingStroke(
-          tool: DrawingTool.values.byName(
-            (item as Map<String, dynamic>)['tool'] as String,
-          ),
-          color: Color((item['color'] as num).toInt()),
-          baseWidth: (item['width'] as num).toDouble(),
-          points: [
-            for (final point in item['points'] as List<dynamic>)
-              DrawingPoint(
-                Offset(
-                  (point[0] as num).toDouble(),
-                  (point[1] as num).toDouble(),
-                ),
-                (point[2] as num).toDouble(),
-              ),
-          ],
-        ),
-    ];
-  } catch (_) {
-    return [];
-  }
-}
-
 Future<Uint8List> _renderDrawingPng(
   List<DrawingStroke> strokes,
   Size size,
@@ -4461,6 +4710,7 @@ class DrawingToolPanel extends StatelessWidget {
   const DrawingToolPanel({
     super.key,
     required this.tool,
+    required this.activeLayer,
     required this.color,
     required this.width,
     required this.colors,
@@ -4468,6 +4718,7 @@ class DrawingToolPanel extends StatelessWidget {
     required this.canRedo,
     required this.isEditing,
     required this.onTool,
+    required this.onLayer,
     required this.onColor,
     required this.onWidth,
     required this.onUndo,
@@ -4478,6 +4729,7 @@ class DrawingToolPanel extends StatelessWidget {
   });
 
   final DrawingTool tool;
+  final DrawingLayer activeLayer;
   final Color color;
   final double width;
   final List<Color> colors;
@@ -4485,6 +4737,7 @@ class DrawingToolPanel extends StatelessWidget {
   final bool canRedo;
   final bool isEditing;
   final ValueChanged<DrawingTool> onTool;
+  final ValueChanged<DrawingLayer> onLayer;
   final ValueChanged<Color> onColor;
   final ValueChanged<double> onWidth;
   final VoidCallback onUndo;
@@ -4619,6 +4872,35 @@ class DrawingToolPanel extends StatelessWidget {
                     ),
                 ],
               ),
+              SizedBox(width: horizontal ? 10 : 0, height: horizontal ? 0 : 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                alignment: WrapAlignment.center,
+                children: [
+                  ToolChip(
+                    key: const ValueKey('drawing-layer-background'),
+                    icon: Icons.wallpaper_rounded,
+                    selected: activeLayer == DrawingLayer.background,
+                    onTap: () => onLayer(DrawingLayer.background),
+                    tooltip: '背景层',
+                  ),
+                  ToolChip(
+                    key: const ValueKey('drawing-layer-artwork'),
+                    icon: Icons.brush_rounded,
+                    selected: activeLayer == DrawingLayer.artwork,
+                    onTap: () => onLayer(DrawingLayer.artwork),
+                    tooltip: '绘画层',
+                  ),
+                  ToolChip(
+                    key: const ValueKey('drawing-layer-stickers'),
+                    icon: Icons.emoji_emotions_rounded,
+                    selected: activeLayer == DrawingLayer.stickers,
+                    onTap: () => onLayer(DrawingLayer.stickers),
+                    tooltip: '贴纸层',
+                  ),
+                ],
+              ),
               SizedBox(width: horizontal ? 14 : 0, height: horizontal ? 0 : 12),
               Wrap(
                 spacing: 8,
@@ -4715,66 +4997,76 @@ class NativeCanvasPainter extends CustomPainter {
     _drawPaperTexture(canvas, size);
     guide?.paint(canvas, size);
 
-    for (final stroke in strokes) {
-      if (stroke.points.isEmpty) continue;
-      if (stroke.tool == DrawingTool.fill) continue;
-      if (stroke.tool == DrawingTool.spray) {
-        _drawSpray(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.pattern) {
-        _drawPattern(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.stamp) {
-        _drawStamp(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.sticker) {
-        _drawSticker(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.crayon) {
-        _drawCrayon(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.watercolor) {
-        _drawWatercolor(canvas, stroke);
-        continue;
-      }
-      if (stroke.tool == DrawingTool.pencil) {
-        _drawPencil(canvas, stroke);
-        continue;
-      }
-      final paint = Paint()
-        ..color = stroke.color
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke
-        ..blendMode = BlendMode.srcOver;
-
-      if (stroke.tool == DrawingTool.glow) {
-        final glowPaint = Paint()
-          ..color = stroke.color.withValues(alpha: .20)
-          ..strokeWidth = stroke.baseWidth * 2.7
+    for (final layer in DrawingLayer.values) {
+      canvas.saveLayer(Offset.zero & size, Paint());
+      for (final stroke in strokes) {
+        if (stroke.points.isEmpty) continue;
+        if (stroke.tool == DrawingTool.fill) continue;
+        if (DrawingLayer.byId(stroke.layerId) != layer) continue;
+        if (stroke.tool == DrawingTool.eraser) {
+          final eraser = Paint()
+            ..blendMode = BlendMode.clear
+            ..strokeWidth = stroke.baseWidth
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..style = PaintingStyle.stroke;
+          _drawStroke(canvas, stroke, eraser, pressureAware: false);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.spray) {
+          _drawSpray(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.pattern) {
+          _drawPattern(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.stamp) {
+          _drawStamp(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.sticker) {
+          _drawSticker(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.crayon) {
+          _drawCrayon(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.watercolor) {
+          _drawWatercolor(canvas, stroke);
+          continue;
+        }
+        if (stroke.tool == DrawingTool.pencil) {
+          _drawPencil(canvas, stroke);
+          continue;
+        }
+        final paint = Paint()
+          ..color = stroke.color
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..style = PaintingStyle.stroke
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-        _drawStroke(canvas, stroke, glowPaint, pressureAware: false);
-      }
+          ..blendMode = BlendMode.srcOver;
 
-      paint
-        ..strokeWidth = stroke.baseWidth
-        ..color = stroke.tool == DrawingTool.marker
-            ? stroke.color.withValues(alpha: .72)
-            : stroke.color;
-      _drawStroke(
-        canvas,
-        stroke,
-        paint,
-        pressureAware: stroke.tool != DrawingTool.eraser,
-      );
+        if (stroke.tool == DrawingTool.glow) {
+          final glowPaint = Paint()
+            ..color = stroke.color.withValues(alpha: .20)
+            ..strokeWidth = stroke.baseWidth * 2.7
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..style = PaintingStyle.stroke
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+          _drawStroke(canvas, stroke, glowPaint, pressureAware: false);
+        }
+
+        paint
+          ..strokeWidth = stroke.baseWidth
+          ..color = stroke.tool == DrawingTool.marker
+              ? stroke.color.withValues(alpha: .72)
+              : stroke.color;
+        _drawStroke(canvas, stroke, paint, pressureAware: true);
+      }
+      canvas.restore();
     }
   }
 
@@ -5825,8 +6117,14 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   final _canvasKey = GlobalKey();
   final _strokes = <DrawingStroke>[];
   final _redoStack = <DrawingStroke>[];
+  final _activePointers = <int, Offset>{};
   DrawingStroke? _activeStroke;
   int? _activePointer;
+  CanvasViewTransform _canvasView = const CanvasViewTransform();
+  double? _gestureStartDistance;
+  Offset? _gestureStartCenter;
+  double _gestureStartScale = 1;
+  Offset _gestureStartOffset = Offset.zero;
   late int _stepIndex;
   DrawingTool _tool = DrawingTool.crayon;
   Color _color = _orange;
@@ -5879,7 +6177,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   Future<void> _restoreDraft() async {
     final draft = await widget.store.loadDraft(_draftKey);
     if (!mounted || draft == null) return;
-    final strokes = _strokesFromDraft(draft);
+    final strokes = strokesFromDraft(draft);
     final savedStep = (draft['stepIndex'] as num?)?.toInt();
     setState(() {
       _strokes
@@ -5904,7 +6202,7 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       }
       await widget.store.saveDraft(
         _draftKey,
-        _draftFromStrokes(_strokes, stepIndex: _stepIndex),
+        draftFromStrokes(_strokes, stepIndex: _stepIndex),
       );
     } catch (_) {
       // A failed autosave must never interrupt the lesson.
@@ -5922,13 +6220,68 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
         .clamp(.35, 1.4);
   }
 
+  Offset _toCanvasPosition(Offset localPosition) =>
+      _canvasView.toCanvasPosition(localPosition);
+
+  void _beginViewportGesture() {
+    if (_activePointers.length < 2) return;
+    final points = _activePointers.values.take(2).toList();
+    _gestureStartDistance = (points[1] - points[0]).distance;
+    _gestureStartCenter = Offset.lerp(points[0], points[1], .5);
+    _gestureStartScale = _canvasView.scale;
+    _gestureStartOffset = _canvasView.offset;
+  }
+
+  void _updateViewportGesture() {
+    if (_activePointers.length < 2) return;
+    if (_gestureStartDistance == null || _gestureStartCenter == null) {
+      _beginViewportGesture();
+      return;
+    }
+    final points = _activePointers.values.take(2).toList();
+    final distance = (points[1] - points[0]).distance;
+    final center = Offset.lerp(points[0], points[1], .5)!;
+    setState(() {
+      _canvasView = _canvasView.updateFromGesture(
+        startDistance: _gestureStartDistance!,
+        startCenter: _gestureStartCenter!,
+        startScale: _gestureStartScale,
+        startOffset: _gestureStartOffset,
+        currentDistance: distance,
+        currentCenter: center,
+      );
+    });
+  }
+
+  void _resetCanvasView() {
+    setState(() {
+      _canvasView = _canvasView.reset();
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+    });
+  }
+
   void _startStroke(PointerDownEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1) {
+      if (_activeStroke != null && _activeStroke!.points.length <= 1) {
+        setState(() => _strokes.remove(_activeStroke));
+      } else {
+        setState(() => simplifyStrokeInPlace(_activeStroke));
+      }
+      _activePointer = null;
+      _activeStroke = null;
+      _beginViewportGesture();
+      return;
+    }
     if (_activePointer != null) return;
     final stroke = DrawingStroke(
       tool: _tool,
       color: _tool == DrawingTool.eraser ? Colors.white : _color,
       baseWidth: _tool == DrawingTool.eraser ? _width * 2.4 : _width,
-      points: [DrawingPoint(event.localPosition, _pressure(event))],
+      points: [
+        DrawingPoint(_toCanvasPosition(event.localPosition), _pressure(event)),
+      ],
     );
     setState(() {
       _activePointer = event.pointer;
@@ -5939,16 +6292,29 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
   }
 
   void _extendStroke(PointerMoveEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length > 1) {
+      _updateViewportGesture();
+      return;
+    }
     if (event.pointer != _activePointer) return;
     setState(
       () => _activeStroke?.points.add(
-        DrawingPoint(event.localPosition, _pressure(event)),
+        DrawingPoint(_toCanvasPosition(event.localPosition), _pressure(event)),
       ),
     );
   }
 
   void _endStroke(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) {
+      _gestureStartDistance = null;
+      _gestureStartCenter = null;
+    } else {
+      _beginViewportGesture();
+    }
     if (event.pointer != _activePointer) return;
+    setState(() => simplifyStrokeInPlace(_activeStroke));
     _activePointer = null;
     _activeStroke = null;
     _scheduleAutosave();
@@ -6125,7 +6491,6 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
       children: [
         Expanded(
           child: RepaintBoundary(
-            key: _canvasKey,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: Stack(
@@ -6144,24 +6509,50 @@ class _GuidedLessonWorkspaceState extends State<GuidedLessonWorkspace> {
                         onPointerMove: _extendStroke,
                         onPointerUp: _endStroke,
                         onPointerCancel: _endStroke,
-                        child: CustomPaint(
-                          painter: NativeCanvasPainter(
-                            strokes: _strokes,
-                            guide: _showGuide
-                                ? LessonGuidePainter(
-                                    art: widget.lesson.art,
-                                    visibleSteps: _stepIndex + 1,
-                                    accent: widget.lesson.color,
-                                    animationProgress: value.clamp(0, 1),
-                                  )
-                                : null,
+                        child: Transform.translate(
+                          offset: _canvasView.offset,
+                          child: Transform.scale(
+                            scale: _canvasView.scale,
+                            alignment: Alignment.topLeft,
+                            child: RepaintBoundary(
+                              key: _canvasKey,
+                              child: CustomPaint(
+                                painter: NativeCanvasPainter(
+                                  strokes: _strokes,
+                                  guide: _showGuide
+                                      ? LessonGuidePainter(
+                                          art: widget.lesson.art,
+                                          visibleSteps: _stepIndex + 1,
+                                          accent: widget.lesson.color,
+                                          animationProgress: value.clamp(0, 1),
+                                        )
+                                      : null,
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
                           ),
-                          child: const SizedBox.expand(),
                         ),
                       );
                     },
                     child: const SizedBox.expand(),
                   ),
+                  if (_canvasView.scale > 1.01)
+                    Positioned(
+                      right: 14,
+                      top: 72,
+                      child: Material(
+                        color: const Color(0xFFFFF8D9).withValues(alpha: .94),
+                        borderRadius: BorderRadius.circular(99),
+                        child: IconButton(
+                          key: const ValueKey('lesson-reset-view'),
+                          tooltip: context.tr('复位画布'),
+                          onPressed: _resetCanvasView,
+                          icon: const Icon(Icons.center_focus_strong_rounded),
+                          color: _brown,
+                        ),
+                      ),
+                    ),
                   Positioned(
                     left: 14,
                     top: 14,
@@ -9899,7 +10290,7 @@ class StrokeReplayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final strokes = _strokesFromDraft(replayData);
+    final strokes = strokesFromDraft(replayData);
     if (strokes.isEmpty) return;
     final sourceSize = Size(
       (replayData['canvasWidth'] as num?)?.toDouble() ?? size.width,

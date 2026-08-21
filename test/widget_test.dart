@@ -6,6 +6,21 @@ import 'package:lovable_little_artist/main.dart';
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
 
+  Future<void> pinchZoom(WidgetTester tester, Finder target) async {
+    final center = tester.getCenter(target);
+    final firstFinger = await tester.createGesture(pointer: 21);
+    final secondFinger = await tester.createGesture(pointer: 22);
+    await firstFinger.down(center - const Offset(22, 0));
+    await secondFinger.down(center + const Offset(22, 0));
+    await tester.pump();
+    await firstFinger.moveTo(center - const Offset(88, 0));
+    await secondFinger.moveTo(center + const Offset(88, 0));
+    await tester.pump();
+    await firstFinger.up();
+    await secondFinger.up();
+    await tester.pump();
+  }
+
   setUp(() {
     binding.platformDispatcher.localeTestValue = const Locale('zh');
     binding.platformDispatcher.localesTestValue = const [Locale('zh')];
@@ -145,6 +160,12 @@ void main() {
     expect(find.text('第 1 / 4 步'), findsOneWidget);
     expect(find.text('画一个大圆'), findsOneWidget);
 
+    await pinchZoom(tester, find.byKey(const ValueKey('lesson-guided-canvas')));
+    expect(find.byKey(const ValueKey('lesson-reset-view')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('lesson-reset-view')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('lesson-reset-view')), findsNothing);
+
     await tester.drag(
       find.byKey(const ValueKey('lesson-guided-canvas')),
       const Offset(80, 30),
@@ -242,6 +263,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('free drawing canvas supports two finger zoom and reset', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(LittleArtistVerseApp(store: MemoryArtistStore()));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byKey(const ValueKey('free-drawing-canvas'));
+    final center = tester.getCenter(canvas);
+    final firstFinger = await tester.createGesture(pointer: 11);
+    final secondFinger = await tester.createGesture(pointer: 12);
+
+    await firstFinger.down(center - const Offset(24, 0));
+    await secondFinger.down(center + const Offset(24, 0));
+    await tester.pump();
+    await firstFinger.moveTo(center - const Offset(96, 0));
+    await secondFinger.moveTo(center + const Offset(96, 0));
+    await tester.pump();
+    await firstFinger.up();
+    await secondFinger.up();
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('free-drawing-reset-view')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('free-drawing-reset-view')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('free-drawing-reset-view')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('advanced drawing tools are selectable and undoable', (
     WidgetTester tester,
   ) async {
@@ -266,6 +324,103 @@ void main() {
     expect(find.byTooltip('撤销'), findsOneWidget);
     await tester.tap(find.byTooltip('撤销'));
     await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stickers can move and return through undo history', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('drawing-layer-background')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('drawing-layer-artwork')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('drawing-layer-stickers')),
+      findsOneWidget,
+    );
+
+    final canvas = find.byKey(const ValueKey('free-drawing-canvas'));
+    final canvasRect = tester.getRect(canvas);
+    final center = tester.getCenter(canvas);
+    await tester.tap(find.byTooltip('贴纸'));
+    await tester.tapAt(center);
+    await tester.pump();
+    await tester.dragFrom(center, const Offset(80, 40));
+    await tester.pump();
+    await tester.tap(find.byTooltip('撤销'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('保存预览'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+
+    final replayData = (await store.load()).artworks.single.replayData!;
+    final strokes = replayData['strokes'] as List<dynamic>;
+    final sticker = (strokes.single as Map).cast<String, dynamic>();
+    final point = (sticker['points'] as List).single as List<dynamic>;
+
+    expect(sticker['tool'], 'sticker');
+    expect(sticker['layer'], 'stickers');
+    expect((point[0] as num).toDouble(), closeTo(canvasRect.width / 2, 1));
+    expect((point[1] as num).toDouble(), closeTo(canvasRect.height / 2, 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stickers can be scaled with a second finger', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1133, 744);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = MemoryArtistStore();
+    await tester.pumpWidget(LittleArtistVerseApp(store: store));
+    await tester.tap(find.text('自由画画'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byKey(const ValueKey('free-drawing-canvas'));
+    final center = tester.getCenter(canvas);
+    await tester.tap(find.byTooltip('贴纸'));
+    await tester.tapAt(center);
+    await tester.pump();
+
+    final firstFinger = await tester.createGesture(pointer: 31);
+    final secondFinger = await tester.createGesture(pointer: 32);
+    await firstFinger.down(center);
+    await tester.pump();
+    await secondFinger.down(center + const Offset(20, 0));
+    await tester.pump();
+    await secondFinger.moveTo(center + const Offset(80, 0));
+    await tester.pump();
+    await secondFinger.up();
+    await firstFinger.up();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('保存预览'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+
+    final replayData = (await store.load()).artworks.single.replayData!;
+    final strokes = replayData['strokes'] as List<dynamic>;
+    final sticker = (strokes.single as Map).cast<String, dynamic>();
+
+    expect(sticker['tool'], 'sticker');
+    expect((sticker['width'] as num).toDouble(), greaterThan(10));
     expect(tester.takeException(), isNull);
   });
 
@@ -532,6 +687,23 @@ void main() {
       );
       expect(find.byTooltip('印章'), findsOneWidget);
       expect(find.byTooltip('贴纸'), findsOneWidget);
+
+      await pinchZoom(
+        tester,
+        find.byKey(const ValueKey('daily-challenge-canvas')),
+      );
+      expect(
+        find.byKey(const ValueKey('daily-challenge-reset-view')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('daily-challenge-reset-view')),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('daily-challenge-reset-view')),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(const ValueKey('challenge-shuffle-task')));
       await tester.pump();
